@@ -46,7 +46,10 @@ namespace mediastreamer2
 		void start();
 		void stop();
 		int feed(MSFilter *f);
+
 		void OnSampleAvailable(ULONGLONG hnsPresentationTime, ULONGLONG hnsSampleDuration, DWORD cbSample, BYTE* pSample);
+
+		void setFps(int fps);
 
 	private:
 		bool isTimeToSend(uint64_t tickerTime);

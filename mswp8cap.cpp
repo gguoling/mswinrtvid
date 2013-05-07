@@ -69,7 +69,8 @@ static void ms_wp8cap_read_uninit(MSFilter *f) {
  *****************************************************************************/
 
 static int ms_wp8cap_set_fps(MSFilter *f, void *arg) {
-	// TODO
+	MSWP8CapReader *r = static_cast<MSWP8CapReader *>(f->data);
+	r->setFps(*((int*)arg));
 	return 0;
 }
 

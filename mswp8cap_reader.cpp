@@ -100,12 +100,16 @@ int MSWP8CapReader::activate()
 			if ((pNativeDevice == nullptr) || FAILED(hr)) {
 				ms_error("[MSWP8Cap] Unable to query interface IAudioVideoCaptureDeviceNative");
 			} else {
+				mIsActivated = true;
 				mNativeVideoDevice = pNativeDevice;
+
+				// Configure the format and the frame rate
 				mVideoDevice->VideoEncodingFormat = CameraCaptureVideoFormat::H264;
+				setFps(mFps);
+
 				// Create the sink and notify the start completion
 				MakeAndInitialize<MSWP8CapSampleSink>(&(this->mVideoSink), this);
 				mNativeVideoDevice->SetVideoSampleSink(mVideoSink);
-				mIsActivated = true;
 				SetEvent(mStartCompleted);
 			}
 		}
@@ -212,6 +216,7 @@ int MSWP8CapReader::feed(MSFilter *f)
 	return 0;
 }
 
+
 static void dummy_free_fct(void *)
 {}
 
@@ -224,6 +229,18 @@ void MSWP8CapReader::OnSampleAvailable(ULONGLONG hnsPresentationTime, ULONGLONG 
 	ms_mutex_lock(&mMutex);
 	putq(&mQueue, ms_yuv_buf_alloc_from_buffer((int)mDimensions.Width, (int)mDimensions.Height, m));
 	ms_mutex_unlock(&mMutex);
+}
+
+
+void MSWP8CapReader::setFps(int fps)
+{
+	if (mIsActivated) {
+		uint32 value = (uint32)fps;
+		mVideoDevice->SetProperty(KnownCameraAudioVideoProperties::VideoFrameRate, value);
+		mFps = (uint32)mVideoDevice->GetProperty(KnownCameraAudioVideoProperties::VideoFrameRate);
+	} else {
+		mFps = fps;
+	}
 }
 
 
