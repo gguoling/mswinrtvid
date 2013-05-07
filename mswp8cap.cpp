@@ -49,7 +49,7 @@ static void ms_wp8cap_read_process(MSFilter *f) {
 	if (!r->isStarted()) {
 		r->start();
 	}
-	// TODO
+	r->feed(f);
 }
 
 static void ms_wp8cap_read_postprocess(MSFilter *f) {

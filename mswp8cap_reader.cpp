@@ -32,15 +32,22 @@ using namespace Windows::Phone::Media::Capture;
 using namespace mediastreamer2;
 
 
+static const int defaultFps = 15;
+
+
 bool MSWP8CapReader::smInstantiated = false;
 
 
 MSWP8CapReader::MSWP8CapReader()
 	: mIsInitialized(false), mIsActivated(false), mIsStarted(false),
+	mStartTime(0), mSampleCount(-1), mFps(defaultFps),
 	mCameraLocation(CameraSensorLocation::Front),
 	mDimensions(MS_VIDEO_SIZE_CIF_W, MS_VIDEO_SIZE_CIF_H),
 	mVideoDevice(nullptr)
 {
+	ms_mutex_init(&mMutex, NULL);
+	qinit(&mQueue);
+
 	if (smInstantiated) {
 		ms_error("[MSWP8Cap] An video capture filter is already instantiated. A second one can not be created.");
 		return;
@@ -68,6 +75,9 @@ MSWP8CapReader::MSWP8CapReader()
 
 MSWP8CapReader::~MSWP8CapReader()
 {
+	stop();
+	flushq(&mQueue, 0);
+	ms_mutex_destroy(&mMutex);
 	smInstantiated = false;
 }
 
@@ -174,13 +184,71 @@ void MSWP8CapReader::stop()
 			mVideoSink = nullptr;
 		}
 	}
+
+	ms_mutex_lock(&mMutex);
+	flushq(&mQueue, 0);
+	ms_mutex_unlock(&mMutex);
 }
+
+int MSWP8CapReader::feed(MSFilter *f)
+{
+	mblk_t *m;
+	uint32_t timestamp;
+
+	if (isTimeToSend(f->ticker->time)) {
+		mblk_t *om = NULL;
+		/* Keep the most recent sample if several samples have been captured */
+		while((m = getSample()) != NULL) {
+			if (om != NULL) freemsg(om);
+			om = m;
+		}
+		if (om != NULL) {
+			timestamp = (uint32_t)(f->ticker->time * 90); /* RTP uses a 90000 Hz clockrate for video */
+			mblk_set_timestamp_info(om, timestamp);
+			ms_queue_put(f->outputs[0], om);
+		}
+	}
+
+	return 0;
+}
+
+static void dummy_free_fct(void *)
+{}
 
 void MSWP8CapReader::OnSampleAvailable(ULONGLONG hnsPresentationTime, ULONGLONG hnsSampleDuration, DWORD cbSample, BYTE* pSample)
 {
-	// TODO
+	MS_UNUSED(hnsPresentationTime);
+	MS_UNUSED(hnsSampleDuration);
+	mblk_t *m = esballoc(pSample, cbSample, 0, dummy_free_fct);
+	m->b_wptr += cbSample;
+	ms_mutex_lock(&mMutex);
+	putq(&mQueue, ms_yuv_buf_alloc_from_buffer((int)mDimensions.Width, (int)mDimensions.Height, m));
+	ms_mutex_unlock(&mMutex);
 }
 
+
+bool MSWP8CapReader::isTimeToSend(uint64_t tickerTime)
+{
+	if (mSampleCount == -1) {
+		mStartTime = tickerTime;
+		mSampleCount = 0;
+	}
+	int curSample = (int)(((tickerTime - mStartTime) * mFps) / 1000.0);
+	if (curSample > mSampleCount) {
+		mSampleCount++;
+		return true;
+	}
+	return false;
+}
+
+mblk_t * MSWP8CapReader::getSample()
+{
+	mblk_t *m = NULL;
+	ms_mutex_lock(&mMutex);
+	m = getq(&mQueue);
+	ms_mutex_unlock(&mMutex);
+	return m;
+}
 
 bool MSWP8CapReader::selectBestSensorLocation()
 {
@@ -214,14 +282,14 @@ bool MSWP8CapReader::selectBestFormat()
 	MSVideoSize bestFoundSize;
 
 	bestFoundSize.width = bestFoundSize.height = 0;
-	requestedSize.width = mDimensions.Width;
-	requestedSize.height = mDimensions.Height;
+	requestedSize.width = (int)mDimensions.Width;
+	requestedSize.height = (int)mDimensions.Height;
 	availableSizes = AudioVideoCaptureDevice::GetAvailableCaptureResolutions(mCameraLocation);
 	availableSizesIterator = availableSizes->First();
 	while (availableSizesIterator->HasCurrent) {
 		MSVideoSize currentSize;
-		currentSize.width = availableSizesIterator->Current.Width;
-		currentSize.height = availableSizesIterator->Current.Height;
+		currentSize.width = (int)availableSizesIterator->Current.Width;
+		currentSize.height = (int)availableSizesIterator->Current.Height;
 		ms_message("Seeing format %ix%i", currentSize.width, currentSize.height);
 		if (ms_video_size_greater_than(requestedSize, currentSize)) {
 			if (ms_video_size_greater_than(currentSize, bestFoundSize)) {
@@ -236,8 +304,8 @@ bool MSWP8CapReader::selectBestFormat()
 		return false;
 	}
 
-	mDimensions.Width = bestFoundSize.width;
-	mDimensions.Height = bestFoundSize.height;
+	mDimensions.Width = (float)bestFoundSize.width;
+	mDimensions.Height = (float)bestFoundSize.height;
 	ms_message("Best camera format is %ix%i", bestFoundSize.width, bestFoundSize.height);
 	return true;
 }

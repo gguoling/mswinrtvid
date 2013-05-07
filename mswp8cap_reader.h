@@ -45,9 +45,12 @@ namespace mediastreamer2
 		bool isStarted() { return mIsStarted; }
 		void start();
 		void stop();
+		int feed(MSFilter *f);
 		void OnSampleAvailable(ULONGLONG hnsPresentationTime, ULONGLONG hnsSampleDuration, DWORD cbSample, BYTE* pSample);
 
 	private:
+		bool isTimeToSend(uint64_t tickerTime);
+		mblk_t * getSample();
 		bool selectBestSensorLocation();
 		bool selectBestFormat();
 
@@ -55,6 +58,11 @@ namespace mediastreamer2
 		bool mIsInitialized;
 		bool mIsActivated;
 		bool mIsStarted;
+		queue_t mQueue;
+		ms_mutex_t mMutex;
+		uint64_t mStartTime;
+		int mSampleCount;
+		int mFps;
 		HANDLE mStartCompleted;
 		HANDLE mStopCompleted;
 		Windows::Phone::Media::Capture::CameraSensorLocation mCameraLocation;
