@@ -335,8 +335,13 @@ void MSWP8CapReader::configure()
 {
 	bool unMuteAudio = true;
 	bool supportH264BaselineProfile = false;
+	Platform::Object^ boxedSensorRotation;
 	Collections::IVectorView<Platform::Object^>^ values;
 	Collections::IIterator<Platform::Object^> ^valuesIterator;
+
+	// Configure the sensor rotation for the capture
+	boxedSensorRotation = mVideoDevice->SensorRotationInDegrees;
+	mVideoDevice->SetProperty(KnownCameraGeneralProperties::EncodeWithOrientation, boxedSensorRotation);
 
 	// Do not mute audio while recording video
 	mVideoDevice->SetProperty(KnownCameraAudioVideoProperties::UnmuteAudioWhileRecording, unMuteAudio);
