@@ -40,13 +40,13 @@ bool MSWP8CapReader::smInstantiated = false;
 
 MSWP8CapReader::MSWP8CapReader()
 	: mIsInitialized(false), mIsActivated(false), mIsStarted(false),
-	mStartTime(0), mSampleCount(-1), mFps(defaultFps),
+	mRfc3984Packer(nullptr), mPackerMode(1), mStartTime(0), mSampleCount(-1), mFps(defaultFps),
 	mCameraLocation(CameraSensorLocation::Front),
 	mDimensions(MS_VIDEO_SIZE_CIF_W, MS_VIDEO_SIZE_CIF_H),
 	mVideoDevice(nullptr)
 {
 	ms_mutex_init(&mMutex, NULL);
-	qinit(&mQueue);
+	ms_queue_init(&mQueue);
 
 	if (smInstantiated) {
 		ms_error("[MSWP8Cap] An video capture filter is already instantiated. A second one can not be created.");
@@ -76,7 +76,7 @@ MSWP8CapReader::MSWP8CapReader()
 MSWP8CapReader::~MSWP8CapReader()
 {
 	stop();
-	flushq(&mQueue, 0);
+	ms_queue_flush(&mQueue);
 	ms_mutex_destroy(&mMutex);
 	smInstantiated = false;
 }
@@ -88,6 +88,10 @@ int MSWP8CapReader::activate()
 
 	if (!mIsInitialized) return -1;
 	if (!selectBestFormat()) return -1;
+
+	mRfc3984Packer = rfc3984_new();
+	rfc3984_set_mode(mRfc3984Packer, mPackerMode);
+	rfc3984_enable_stap_a(mRfc3984Packer, FALSE);
 
 	openOperation = AudioVideoCaptureDevice::OpenForVideoOnlyAsync(mCameraLocation, mDimensions);
 	openOperation->Completed = ref new AsyncOperationCompletedHandler<AudioVideoCaptureDevice^>([this] (IAsyncOperation<AudioVideoCaptureDevice^> ^operation, Windows::Foundation::AsyncStatus status) {
@@ -123,6 +127,10 @@ int MSWP8CapReader::activate()
 
 int MSWP8CapReader::deactivate()
 {
+	if (mRfc3984Packer != nullptr) {
+		rfc3984_destroy(mRfc3984Packer);
+		mRfc3984Packer = nullptr;
+	}
 	mIsActivated = false;
 	return 0;
 }
@@ -187,28 +195,18 @@ void MSWP8CapReader::stop()
 	}
 
 	ms_mutex_lock(&mMutex);
-	flushq(&mQueue, 0);
+	ms_queue_flush(&mQueue);
 	ms_mutex_unlock(&mMutex);
 }
 
 int MSWP8CapReader::feed(MSFilter *f)
 {
 	mblk_t *m;
-	uint32_t timestamp;
-
-	if (isTimeToSend(f->ticker->time)) {
-		mblk_t *om = NULL;
-		/* Keep the most recent sample if several samples have been captured */
-		while((m = getSample()) != NULL) {
-			if (om != NULL) freemsg(om);
-			om = m;
-		}
-		if (om != NULL) {
-			timestamp = (uint32_t)(f->ticker->time * 90); /* RTP uses a 90000 Hz clockrate for video */
-			mblk_set_timestamp_info(om, timestamp);
-			ms_queue_put(f->outputs[0], om);
-		}
+	ms_mutex_lock(&mMutex);
+	while ((m = ms_queue_get(&mQueue)) != NULL) {
+		ms_queue_put(f->outputs[0], m);
 	}
+	ms_mutex_unlock(&mMutex);
 
 	return 0;
 }
@@ -219,12 +217,13 @@ static void dummy_free_fct(void *)
 
 void MSWP8CapReader::OnSampleAvailable(ULONGLONG hnsPresentationTime, ULONGLONG hnsSampleDuration, DWORD cbSample, BYTE* pSample)
 {
-	MS_UNUSED(hnsPresentationTime);
 	MS_UNUSED(hnsSampleDuration);
-	mblk_t *m = esballoc(pSample, cbSample, 0, dummy_free_fct);
-	m->b_wptr += cbSample;
+	MSQueue nalus;
+	uint32_t timestamp = (uint32_t)((hnsPresentationTime / 10000) * 90);
+	ms_queue_init(&nalus);
+	bitstreamToMsgb((uint8_t*)pSample, (size_t)cbSample, &nalus);
 	ms_mutex_lock(&mMutex);
-	putq(&mQueue, ms_yuv_buf_alloc_from_buffer((int)mDimensions.Width, (int)mDimensions.Height, m));
+	rfc3984_pack(mRfc3984Packer, &nalus, &mQueue, timestamp);
 	ms_mutex_unlock(&mMutex);
 }
 
@@ -241,27 +240,35 @@ void MSWP8CapReader::setFps(int fps)
 }
 
 
-bool MSWP8CapReader::isTimeToSend(uint64_t tickerTime)
-{
-	if (mSampleCount == -1) {
-		mStartTime = tickerTime;
-		mSampleCount = 0;
-	}
-	int curSample = (int)(((tickerTime - mStartTime) * mFps) / 1000.0);
-	if (curSample > mSampleCount) {
-		mSampleCount++;
-		return true;
-	}
-	return false;
-}
+void MSWP8CapReader::bitstreamToMsgb(uint8_t *encoded_buf, size_t size, MSQueue *nalus) {
+	size_t idx = 0;
+	size_t frame_start_idx;
+	mblk_t *m;
+	int nal_len;
 
-mblk_t * MSWP8CapReader::getSample()
-{
-	mblk_t *m = NULL;
-	ms_mutex_lock(&mMutex);
-	m = getq(&mQueue);
-	ms_mutex_unlock(&mMutex);
-	return m;
+	if ((size < 5) || (encoded_buf[0] != 0) || (encoded_buf[1] != 0) || (encoded_buf[2] != 0) || (encoded_buf[3] != 1))
+		return;
+
+	frame_start_idx = idx = 4;
+	while (frame_start_idx < size) {
+		uint8_t *buf = encoded_buf + idx;
+		while ((buf = (uint8_t *)memchr(buf, 0, encoded_buf + size - buf)) != NULL) {
+			if (encoded_buf + size - buf < 4)
+				break;
+			if (*((int*)(buf)) == 0x01000000)
+				break;
+			++buf;
+		}
+
+		idx = buf ? buf - encoded_buf : size;
+		nal_len = idx - frame_start_idx;
+		if (nal_len > 0) {
+			m = esballoc(&encoded_buf[frame_start_idx], nal_len, 0, NULL);
+			m->b_wptr += nal_len;
+			ms_queue_put(nalus, m);
+		}
+		frame_start_idx = idx = idx + 4;
+	}
 }
 
 bool MSWP8CapReader::selectBestSensorLocation()

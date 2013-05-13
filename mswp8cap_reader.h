@@ -29,6 +29,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include <Windows.Phone.Media.Capture.h>
 #include <Windows.Phone.Media.Capture.Native.h>
 #include "mediastreamer2/msfilter.h"
+#include "mediastreamer2/rfc3984.h"
 
 
 namespace mediastreamer2
@@ -52,8 +53,7 @@ namespace mediastreamer2
 		void setFps(int fps);
 
 	private:
-		bool isTimeToSend(uint64_t tickerTime);
-		mblk_t * getSample();
+		void MSWP8CapReader::bitstreamToMsgb(uint8_t *encoded_buf, size_t size, MSQueue *nalus);
 		bool selectBestSensorLocation();
 		bool selectBestFormat();
 		void configure();
@@ -62,8 +62,10 @@ namespace mediastreamer2
 		bool mIsInitialized;
 		bool mIsActivated;
 		bool mIsStarted;
-		queue_t mQueue;
+		MSQueue mQueue;
 		ms_mutex_t mMutex;
+		Rfc3984Context *mRfc3984Packer;
+		int mPackerMode;
 		uint64_t mStartTime;
 		int mSampleCount;
 		int mFps;
