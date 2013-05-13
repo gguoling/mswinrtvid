@@ -102,10 +102,7 @@ int MSWP8CapReader::activate()
 			} else {
 				mIsActivated = true;
 				mNativeVideoDevice = pNativeDevice;
-
-				// Configure the format and the frame rate
-				mVideoDevice->VideoEncodingFormat = CameraCaptureVideoFormat::H264;
-				setFps(mFps);
+				configure();
 
 				// Create the sink and notify the start completion
 				MakeAndInitialize<MSWP8CapSampleSink>(&(this->mVideoSink), this);
@@ -325,4 +322,13 @@ bool MSWP8CapReader::selectBestFormat()
 	mDimensions.Height = (float)bestFoundSize.height;
 	ms_message("Best camera format is %ix%i", bestFoundSize.width, bestFoundSize.height);
 	return true;
+}
+
+void MSWP8CapReader::configure()
+{
+	bool unMuteAudio = true;
+
+	mVideoDevice->VideoEncodingFormat = CameraCaptureVideoFormat::H264;
+	setFps(mFps);
+	mVideoDevice->SetProperty(KnownCameraAudioVideoProperties::UnmuteAudioWhileRecording, unMuteAudio);
 }

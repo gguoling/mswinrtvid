@@ -56,6 +56,7 @@ namespace mediastreamer2
 		mblk_t * getSample();
 		bool selectBestSensorLocation();
 		bool selectBestFormat();
+		void configure();
 
 		static bool smInstantiated;
 		bool mIsInitialized;
