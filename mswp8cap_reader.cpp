@@ -327,8 +327,39 @@ bool MSWP8CapReader::selectBestFormat()
 void MSWP8CapReader::configure()
 {
 	bool unMuteAudio = true;
+	bool supportH264BaselineProfile = false;
+	Collections::IVectorView<Platform::Object^>^ values;
+	Collections::IIterator<Platform::Object^> ^valuesIterator;
 
-	mVideoDevice->VideoEncodingFormat = CameraCaptureVideoFormat::H264;
-	setFps(mFps);
+	// Do not mute audio while recording video
 	mVideoDevice->SetProperty(KnownCameraAudioVideoProperties::UnmuteAudioWhileRecording, unMuteAudio);
+
+	// Use the H264 encoding format
+	mVideoDevice->VideoEncodingFormat = CameraCaptureVideoFormat::H264;
+
+	// Use the H264 baseline profile
+	values = mVideoDevice->GetSupportedPropertyValues(mCameraLocation, KnownCameraAudioVideoProperties::H264EncodingProfile);
+	valuesIterator = values->First();
+	while (valuesIterator->HasCurrent) {
+		H264EncoderProfile profile = (H264EncoderProfile)safe_cast<int>(valuesIterator->Current);
+		if (profile == H264EncoderProfile::Baseline) {
+			supportH264BaselineProfile = true;
+		}
+		valuesIterator->MoveNext();
+	}
+	if (supportH264BaselineProfile) {
+		try {
+			Platform::Object^ boxedProfile = H264EncoderProfile::Baseline;
+			mVideoDevice->SetProperty(KnownCameraAudioVideoProperties::H264EncodingProfile, boxedProfile);
+		} catch (Platform::COMException^ e) {
+			if (e->HResult == E_NOTIMPL) {
+				ms_warning("This device does not support setting the H264 encoding profile");
+			}
+		}
+	} else {
+		ms_warning("This camera does not support H264 baseline profile");
+	}
+
+	// Define the video frame rate
+	setFps(mFps);
 }
