@@ -232,6 +232,11 @@ void MSWP8CapReader::setFps(int fps)
 {
 	if (mIsActivated) {
 		uint32 value = (uint32)fps;
+		CameraCapturePropertyRange^ range = mVideoDevice->GetSupportedPropertyRange(mCameraLocation, KnownCameraAudioVideoProperties::VideoFrameRate);
+		uint32_t min = safe_cast<uint32>(range->Min);
+		uint32_t max = safe_cast<uint32>(range->Max);
+		if (value < min) value = min;
+		else if (value > max) value = max;
 		mVideoDevice->SetProperty(KnownCameraAudioVideoProperties::VideoFrameRate, value);
 		mFps = (uint32)mVideoDevice->GetProperty(KnownCameraAudioVideoProperties::VideoFrameRate);
 	} else {
