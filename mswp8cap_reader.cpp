@@ -342,7 +342,14 @@ void MSWP8CapReader::configure()
 	Collections::IIterator<Platform::Object^> ^valuesIterator;
 
 	// Configure the sensor rotation for the capture
-	boxedSensorRotation = mVideoDevice->SensorRotationInDegrees;
+	if (mCameraLocation == CameraSensorLocation::Front) {
+		uint32 rotation = 360 - mVideoDevice->SensorRotationInDegrees;
+		boxedSensorRotation = (rotation == 360) ? 0 : rotation;
+	} else if (mCameraLocation == CameraSensorLocation::Back) {
+		boxedSensorRotation = mVideoDevice->SensorRotationInDegrees;
+	} else {
+		boxedSensorRotation = 0;
+	}
 	mVideoDevice->SetProperty(KnownCameraGeneralProperties::EncodeWithOrientation, boxedSensorRotation);
 
 	// Do not mute audio while recording video
