@@ -62,7 +62,8 @@ namespace mediastreamer2
 		bool mIsInitialized;
 		bool mIsActivated;
 		bool mIsStarted;
-		MSQueue mQueue;
+		MSQueue mSampleToSendQueue;
+		MSQueue mSampleToFreeQueue;
 		ms_mutex_t mMutex;
 		Rfc3984Context *mRfc3984Packer;
 		int mPackerMode;

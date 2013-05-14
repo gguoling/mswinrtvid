@@ -46,7 +46,8 @@ MSWP8CapReader::MSWP8CapReader()
 	mVideoDevice(nullptr)
 {
 	ms_mutex_init(&mMutex, NULL);
-	ms_queue_init(&mQueue);
+	ms_queue_init(&mSampleToSendQueue);
+	ms_queue_init(&mSampleToFreeQueue);
 
 	if (smInstantiated) {
 		ms_error("[MSWP8Cap] An video capture filter is already instantiated. A second one can not be created.");
@@ -76,7 +77,6 @@ MSWP8CapReader::MSWP8CapReader()
 MSWP8CapReader::~MSWP8CapReader()
 {
 	stop();
-	ms_queue_flush(&mQueue);
 	ms_mutex_destroy(&mMutex);
 	smInstantiated = false;
 }
@@ -158,6 +158,8 @@ void MSWP8CapReader::start()
 
 void MSWP8CapReader::stop()
 {
+	mblk_t *m;
+
 	if (!mIsStarted) return;
 
 	if (mVideoDevice) {
@@ -195,16 +197,35 @@ void MSWP8CapReader::stop()
 	}
 
 	ms_mutex_lock(&mMutex);
-	ms_queue_flush(&mQueue);
+	// Free samples that have already been sent
+	while ((m = ms_queue_get(&mSampleToFreeQueue)) != NULL) {
+		freemsg(m);
+	}
+	// Free the samples that have not been sent yet
+	while ((m = ms_queue_get(&mSampleToSendQueue)) != NULL) {
+		freemsg(m);
+	}
 	ms_mutex_unlock(&mMutex);
 }
 
 int MSWP8CapReader::feed(MSFilter *f)
 {
 	mblk_t *m;
+	MSQueue nalus;
+	uint32_t timestamp;
+
 	ms_mutex_lock(&mMutex);
-	while ((m = ms_queue_get(&mQueue)) != NULL) {
-		ms_queue_put(f->outputs[0], m);
+	// Free samples that have already been sent
+	while ((m = ms_queue_get(&mSampleToFreeQueue)) != NULL) {
+		freemsg(m);
+	}
+	// Send queued samples
+	while ((m = ms_queue_get(&mSampleToSendQueue)) != NULL) {
+		ms_queue_init(&nalus);
+		timestamp = mblk_get_timestamp_info(m);
+		bitstreamToMsgb(m->b_rptr, m->b_wptr - m->b_rptr, &nalus);
+		rfc3984_pack(mRfc3984Packer, &nalus, f->outputs[0], timestamp);
+		ms_queue_put(&mSampleToFreeQueue, m);
 	}
 	ms_mutex_unlock(&mMutex);
 
@@ -212,15 +233,25 @@ int MSWP8CapReader::feed(MSFilter *f)
 }
 
 
+static void freeSample(void *sample)
+{
+	delete[] sample;
+}
+
 void MSWP8CapReader::OnSampleAvailable(ULONGLONG hnsPresentationTime, ULONGLONG hnsSampleDuration, DWORD cbSample, BYTE* pSample)
 {
 	MS_UNUSED(hnsSampleDuration);
-	MSQueue nalus;
+	mblk_t *m;
 	uint32_t timestamp = (uint32_t)((hnsPresentationTime / 10000LL) * 90LL);
-	ms_queue_init(&nalus);
-	bitstreamToMsgb((uint8_t*)pSample, (size_t)cbSample, &nalus);
+	BYTE* pMem = new BYTE[cbSample];
+
+	memcpy(pMem, pSample, cbSample);
+	m = esballoc(pMem, cbSample, 0, freeSample);
+	m->b_wptr += cbSample;
+	mblk_set_timestamp_info(m, timestamp);
+
 	ms_mutex_lock(&mMutex);
-	rfc3984_pack(mRfc3984Packer, &nalus, &mQueue, timestamp);
+	ms_queue_put(&mSampleToSendQueue, m);
 	ms_mutex_unlock(&mMutex);
 }
 
