@@ -53,12 +53,14 @@ namespace mediastreamer2
 
 		void setCameraLocation(uint32 location);
 		void setFps(int fps);
+		MSVideoSize getVideoSize();
+		void setVideoSize(MSVideoSize vs);
 
 		static void detectCameras(MSWebCamManager *manager, MSWebCamDesc *desc);
 
 	private:
 		void MSWP8CapReader::bitstreamToMsgb(uint8_t *encoded_buf, size_t size, MSQueue *nalus);
-		bool selectBestFormat();
+		bool selectBestVideoSize();
 		void configure();
 
 		static bool smInstantiated;

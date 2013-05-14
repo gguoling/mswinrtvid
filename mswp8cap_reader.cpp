@@ -82,7 +82,7 @@ int MSWP8CapReader::activate()
 	IAsyncOperation<AudioVideoCaptureDevice^> ^openOperation = nullptr;
 
 	if (!mIsInitialized) return -1;
-	if (!selectBestFormat()) return -1;
+	if (!selectBestVideoSize()) return -1;
 
 	mRfc3984Packer = rfc3984_new();
 	rfc3984_set_mode(mRfc3984Packer, mPackerMode);
@@ -272,6 +272,38 @@ void MSWP8CapReader::setFps(int fps)
 	}
 }
 
+MSVideoSize MSWP8CapReader::getVideoSize()
+{
+	MSVideoSize vs;
+	vs.width = (int)mDimensions.Width;
+	vs.height = (int)mDimensions.Height;
+	return vs;
+}
+
+void MSWP8CapReader::setVideoSize(MSVideoSize vs)
+{
+	mDimensions.Width = (float)vs.width;
+	mDimensions.Height = (float)vs.height;
+
+	if (mIsActivated) {
+		IAsyncAction^ action = nullptr;
+
+		selectBestVideoSize();
+		action = mVideoDevice->SetCaptureResolutionAsync(mDimensions);
+		action->Completed = ref new AsyncActionCompletedHandler([this] (IAsyncAction^ action, Windows::Foundation::AsyncStatus status) {
+			if (status == Windows::Foundation::AsyncStatus::Completed) {
+				ms_debug("[MSWP8Cap] AsyncAction completed");
+			}
+			else if (status == Windows::Foundation::AsyncStatus::Canceled) {
+				ms_warning("[MSWP8Cap] AsyncAction has been canceled");
+			}
+			else if (status == Windows::Foundation::AsyncStatus::Error) {
+				ms_error("[MSWP8Cap] AsyncAction failed");
+			}
+		});
+	}
+}
+
 
 void MSWP8CapReader::bitstreamToMsgb(uint8_t *encoded_buf, size_t size, MSQueue *nalus) {
 	size_t idx = 0;
@@ -304,7 +336,7 @@ void MSWP8CapReader::bitstreamToMsgb(uint8_t *encoded_buf, size_t size, MSQueue 
 	}
 }
 
-bool MSWP8CapReader::selectBestFormat()
+bool MSWP8CapReader::selectBestVideoSize()
 {
 	Collections::IVectorView<Size> ^availableSizes;
 	Collections::IIterator<Size> ^availableSizesIterator;
@@ -320,7 +352,7 @@ bool MSWP8CapReader::selectBestFormat()
 		MSVideoSize currentSize;
 		currentSize.width = (int)availableSizesIterator->Current.Width;
 		currentSize.height = (int)availableSizesIterator->Current.Height;
-		ms_message("[MSWP8Cap] Seeing format %ix%i", currentSize.width, currentSize.height);
+		ms_message("[MSWP8Cap] Seeing video size %ix%i", currentSize.width, currentSize.height);
 		if (ms_video_size_greater_than(requestedSize, currentSize)) {
 			if (ms_video_size_greater_than(currentSize, bestFoundSize)) {
 				bestFoundSize = currentSize;
@@ -330,13 +362,13 @@ bool MSWP8CapReader::selectBestFormat()
 	}
 
 	if ((bestFoundSize.width == 0) && bestFoundSize.height == 0) {
-		ms_error("[MSWP8Cap] This camera does not support our format");
+		ms_error("[MSWP8Cap] This camera does not support our video size");
 		return false;
 	}
 
 	mDimensions.Width = (float)bestFoundSize.width;
 	mDimensions.Height = (float)bestFoundSize.height;
-	ms_message("[MSWP8Cap] Best camera format is %ix%i", bestFoundSize.width, bestFoundSize.height);
+	ms_message("[MSWP8Cap] Best video size is %ix%i", bestFoundSize.width, bestFoundSize.height);
 	return true;
 }
 

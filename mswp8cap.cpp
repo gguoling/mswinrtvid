@@ -75,17 +75,23 @@ static int ms_wp8cap_set_fps(MSFilter *f, void *arg) {
 }
 
 static int ms_wp8cap_get_pix_fmt(MSFilter *f, void *arg) {
-	// TODO
+	MS_UNUSED(f);
+	MSPixFmt *fmt = static_cast<MSPixFmt *>(arg);
+	*fmt = MS_PIX_FMT_UNKNOWN;
 	return 0;
 }
 
 static int ms_wp8cap_set_vsize(MSFilter *f, void *arg) {
-	// TODO
+	MSWP8CapReader *r = static_cast<MSWP8CapReader *>(f->data);
+	MSVideoSize *vs = static_cast<MSVideoSize *>(arg);
+	r->setVideoSize(*vs);
 	return 0;
 }
 
 static int ms_wp8cap_get_vsize(MSFilter *f, void *arg) {
-	// TODO
+	MSWP8CapReader *r = static_cast<MSWP8CapReader *>(f->data);
+	MSVideoSize *vs = static_cast<MSVideoSize *>(arg);
+	*vs = r->getVideoSize();
 	return 0;
 }
 
