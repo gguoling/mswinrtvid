@@ -212,14 +212,11 @@ int MSWP8CapReader::feed(MSFilter *f)
 }
 
 
-static void dummy_free_fct(void *)
-{}
-
 void MSWP8CapReader::OnSampleAvailable(ULONGLONG hnsPresentationTime, ULONGLONG hnsSampleDuration, DWORD cbSample, BYTE* pSample)
 {
 	MS_UNUSED(hnsSampleDuration);
 	MSQueue nalus;
-	uint32_t timestamp = (uint32_t)((hnsPresentationTime / 10000) * 90);
+	uint32_t timestamp = (uint32_t)((hnsPresentationTime / 10000LL) * 90LL);
 	ms_queue_init(&nalus);
 	bitstreamToMsgb((uint8_t*)pSample, (size_t)cbSample, &nalus);
 	ms_mutex_lock(&mMutex);
