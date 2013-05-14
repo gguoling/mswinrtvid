@@ -166,20 +166,15 @@ static MSWebCamDesc ms_wp8cap_desc = {
 	NULL
 };
 
-static MSWebCam *ms_wp8cap_new(void) {
-	MSWebCam *cam = ms_web_cam_new(&ms_wp8cap_desc);
-	cam->name = ms_strdup("WP8 Camera");
-	return cam;
-}
-
 static void ms_wp8cap_detect(MSWebCamManager *m) {
-	MSWebCam *cam = ms_wp8cap_new();
-	ms_web_cam_manager_prepend_cam(m, cam);
+	MSWP8CapReader::detectCameras(m, &ms_wp8cap_desc);
 }
 
 static MSFilter *ms_wp8cap_create_reader(MSWebCam *cam) {
-	MS_UNUSED(cam);
-	return ms_filter_new_from_desc(&ms_wp8cap_read_desc);
+	MSFilter *f = ms_filter_new_from_desc(&ms_wp8cap_read_desc);
+	MSWP8CapReader *r = static_cast<MSWP8CapReader *>(f->data);
+	r->setCameraLocation((uint32)cam->data);
+	return f;
 }
 
 

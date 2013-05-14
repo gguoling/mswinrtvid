@@ -29,6 +29,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include <Windows.Phone.Media.Capture.h>
 #include <Windows.Phone.Media.Capture.Native.h>
 #include "mediastreamer2/msfilter.h"
+#include "mediastreamer2/mswebcam.h"
 #include "mediastreamer2/rfc3984.h"
 
 
@@ -50,11 +51,13 @@ namespace mediastreamer2
 
 		void OnSampleAvailable(ULONGLONG hnsPresentationTime, ULONGLONG hnsSampleDuration, DWORD cbSample, BYTE* pSample);
 
+		void setCameraLocation(uint32 location);
 		void setFps(int fps);
+
+		static void detectCameras(MSWebCamManager *manager, MSWebCamDesc *desc);
 
 	private:
 		void MSWP8CapReader::bitstreamToMsgb(uint8_t *encoded_buf, size_t size, MSQueue *nalus);
-		bool selectBestSensorLocation();
 		bool selectBestFormat();
 		void configure();
 

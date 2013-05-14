@@ -65,11 +65,6 @@ MSWP8CapReader::MSWP8CapReader()
 		return;
 	}
 
-	if (!selectBestSensorLocation()) {
-		ms_error("[MSWP8Cap] It looks like this device does not have a camera");
-		return;
-	}
-
 	mIsInitialized = true;
 	smInstantiated = true;
 }
@@ -256,6 +251,11 @@ void MSWP8CapReader::OnSampleAvailable(ULONGLONG hnsPresentationTime, ULONGLONG 
 }
 
 
+void MSWP8CapReader::setCameraLocation(uint32 location)
+{
+	mCameraLocation = (CameraSensorLocation)location;
+}
+
 void MSWP8CapReader::setFps(int fps)
 {
 	if (mIsActivated) {
@@ -304,30 +304,6 @@ void MSWP8CapReader::bitstreamToMsgb(uint8_t *encoded_buf, size_t size, MSQueue 
 	}
 }
 
-bool MSWP8CapReader::selectBestSensorLocation()
-{
-	Collections::IVectorView<CameraSensorLocation> ^availableSensorLocations;
-	Collections::IIterator<CameraSensorLocation> ^availableSensorLocationsIterator;
-	CameraSensorLocation requestedLocation = mCameraLocation;
-	CameraSensorLocation bestLocation = CameraSensorLocation::Front;
-	bool locationAvailable = false;
-
-	availableSensorLocations = AudioVideoCaptureDevice::AvailableSensorLocations;
-	availableSensorLocationsIterator = availableSensorLocations->First();
-	while (availableSensorLocationsIterator->HasCurrent) {
-		CameraSensorLocation currentLocation = availableSensorLocationsIterator->Current;
-		locationAvailable = true;
-		bestLocation = currentLocation;
-		if (currentLocation == requestedLocation) break;
-		availableSensorLocationsIterator->MoveNext();
-	}
-
-	if (locationAvailable) {
-		mCameraLocation = bestLocation;
-	}
-	return locationAvailable;
-}
-
 bool MSWP8CapReader::selectBestFormat()
 {
 	Collections::IVectorView<Size> ^availableSizes;
@@ -344,7 +320,7 @@ bool MSWP8CapReader::selectBestFormat()
 		MSVideoSize currentSize;
 		currentSize.width = (int)availableSizesIterator->Current.Width;
 		currentSize.height = (int)availableSizesIterator->Current.Height;
-		ms_message("Seeing format %ix%i", currentSize.width, currentSize.height);
+		ms_message("[MSWP8Cap] Seeing format %ix%i", currentSize.width, currentSize.height);
 		if (ms_video_size_greater_than(requestedSize, currentSize)) {
 			if (ms_video_size_greater_than(currentSize, bestFoundSize)) {
 				bestFoundSize = currentSize;
@@ -354,13 +330,13 @@ bool MSWP8CapReader::selectBestFormat()
 	}
 
 	if ((bestFoundSize.width == 0) && bestFoundSize.height == 0) {
-		ms_error("This camera does not support our format");
+		ms_error("[MSWP8Cap] This camera does not support our format");
 		return false;
 	}
 
 	mDimensions.Width = (float)bestFoundSize.width;
 	mDimensions.Height = (float)bestFoundSize.height;
-	ms_message("Best camera format is %ix%i", bestFoundSize.width, bestFoundSize.height);
+	ms_message("[MSWP8Cap] Best camera format is %ix%i", bestFoundSize.width, bestFoundSize.height);
 	return true;
 }
 
@@ -379,7 +355,8 @@ void MSWP8CapReader::configure()
 	} else if (mCameraLocation == CameraSensorLocation::Back) {
 		boxedSensorRotation = mVideoDevice->SensorRotationInDegrees;
 	} else {
-		boxedSensorRotation = 0;
+		uint32 rotation = 0;
+		boxedSensorRotation = rotation;
 	}
 	mVideoDevice->SetProperty(KnownCameraGeneralProperties::EncodeWithOrientation, boxedSensorRotation);
 
@@ -405,13 +382,39 @@ void MSWP8CapReader::configure()
 			mVideoDevice->SetProperty(KnownCameraAudioVideoProperties::H264EncodingProfile, boxedProfile);
 		} catch (Platform::COMException^ e) {
 			if (e->HResult == E_NOTIMPL) {
-				ms_warning("This device does not support setting the H264 encoding profile");
+				ms_warning("[MSWP8Cap] This device does not support setting the H264 encoding profile");
 			}
 		}
 	} else {
-		ms_warning("This camera does not support H264 baseline profile");
+		ms_warning("[MSWP8Cap] This camera does not support H264 baseline profile");
 	}
 
 	// Define the video frame rate
 	setFps(mFps);
+}
+
+
+void MSWP8CapReader::detectCameras(MSWebCamManager *manager, MSWebCamDesc *desc)
+{
+	Collections::IVectorView<CameraSensorLocation> ^availableSensorLocations;
+	Collections::IIterator<CameraSensorLocation> ^availableSensorLocationsIterator;
+	int count = 0;
+
+	availableSensorLocations = AudioVideoCaptureDevice::AvailableSensorLocations;
+	availableSensorLocationsIterator = availableSensorLocations->First();
+	while (availableSensorLocationsIterator->HasCurrent) {
+		char buffer[8];
+		MSWebCam *cam = ms_web_cam_new(desc);
+		memset(buffer, '\0', sizeof(buffer));
+		wcstombs(buffer, availableSensorLocationsIterator->Current.ToString()->Data(), sizeof(buffer) - 1);
+		cam->name = ms_strdup(buffer);
+		cam->data = (void *)availableSensorLocationsIterator->Current;
+		ms_web_cam_manager_add_cam(manager, cam);
+		availableSensorLocationsIterator->MoveNext();
+		count++;
+	}
+
+	if (count == 0) {
+		ms_warning("[MSWP8Cap] This device does not have a camera");
+	}
 }
