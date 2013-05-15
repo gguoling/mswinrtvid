@@ -20,10 +20,10 @@
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{0565952a-ea62-46a2-8261-f5b4b490da42}</ProjectGuid>
-    <RootNamespace>mswp8cap</RootNamespace>
+    <RootNamespace>mswp8vid</RootNamespace>
     <DefaultLanguage>en-US</DefaultLanguage>
     <MinimumVisualStudioVersion>11.0</MinimumVisualStudioVersion>
-    <ProjectName>libmswp8cap</ProjectName>
+    <ProjectName>libmswp8vid</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -178,11 +178,11 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="..\..\mswp8vid.cpp" />
     <ClCompile Include="..\..\mswp8cap.cpp" />
-    <ClCompile Include="..\..\mswp8cap_reader.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\mswp8cap_reader.h" />
+    <ClInclude Include="..\..\mswp8cap.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <Import Project="$(MSBuildExtensionsPath)\Microsoft\WindowsPhone\v$(TargetPlatformVersion)\Microsoft.Cpp.WindowsPhone.$(TargetPlatformVersion).targets" Condition="'$(Platform)'=='ARM'" />

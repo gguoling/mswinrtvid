@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Express 2012 for Windows Phone
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "mswp8cap", "mswp8cap\mswp8cap.vcxproj", "{0565952A-EA62-46A2-8261-F5B4B490DA42}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "mswp8vid", "mswp8vid\mswp8vid.vcxproj", "{0565952A-EA62-46A2-8261-F5B4B490DA42}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "mediastreamer2", "..\..\mediastreamer2\build\vsx\mediastreamer2\mediastreamer2\mediastreamer2.vcxproj", "{027BAD0E-9179-48C1-9733-7AA7E2C2EC70}"
 	ProjectSection(ProjectDependencies) = postProject

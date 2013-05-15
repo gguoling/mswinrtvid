@@ -1,5 +1,5 @@
 /*
-mswp8cap_reader.h
+mswp8cap.h
 
 mediastreamer2 library - modular sound and video processing and streaming
 Windows Audio Session API sound card plugin for mediastreamer2
@@ -37,10 +37,10 @@ namespace mediastreamer2
 {
 	class MSWP8CapSampleSink;
 
-	class MSWP8CapReader {
+	class MSWP8Cap {
 	public:
-		MSWP8CapReader();
-		virtual ~MSWP8CapReader();
+		MSWP8Cap();
+		virtual ~MSWP8Cap();
 
 		int activate();
 		int deactivate();
@@ -59,7 +59,7 @@ namespace mediastreamer2
 		static void detectCameras(MSWebCamManager *manager, MSWebCamDesc *desc);
 
 	private:
-		void MSWP8CapReader::bitstreamToMsgb(uint8_t *encoded_buf, size_t size, MSQueue *nalus);
+		void bitstreamToMsgb(uint8_t *encoded_buf, size_t size, MSQueue *nalus);
 		bool selectBestVideoSize();
 		void configure();
 
@@ -89,7 +89,7 @@ namespace mediastreamer2
 		: public Microsoft::WRL::RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::RuntimeClassType::ClassicCom>, ICameraCaptureSampleSink>
 	{
 	public:
-		STDMETHODIMP RuntimeClassInitialize(MSWP8CapReader *reader) {
+		STDMETHODIMP RuntimeClassInitialize(MSWP8Cap *reader) {
 			m_dwSampleCount = 0;
 			m_reader = reader;
 			return S_OK;
@@ -108,7 +108,7 @@ namespace mediastreamer2
 
 	private:
 		DWORD m_dwSampleCount;
-		MSWP8CapReader *m_reader;
+		MSWP8Cap *m_reader;
 	};
 
 }
