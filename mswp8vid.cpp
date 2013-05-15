@@ -26,12 +26,13 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "mediastreamer2/mswebcam.h"
 
 #include "mswp8cap.h"
+#include "mswp8dis.h"
 
 using namespace mediastreamer2;
 
 
 /******************************************************************************
- * Methods to (de)initialize and run the WP8 Video capture filter             *
+ * Methods to (de)initialize and run the WP8 video capture filter             *
  *****************************************************************************/
 
 static void ms_wp8cap_read_init(MSFilter *f) {
@@ -65,7 +66,7 @@ static void ms_wp8cap_read_uninit(MSFilter *f) {
 
 
 /******************************************************************************
- * Methods to configure the Windows Phone 8 Video capture filter              *
+ * Methods to configure the Windows Phone 8 video capture filter              *
  *****************************************************************************/
 
 static int ms_wp8cap_set_fps(MSFilter *f, void *arg) {
@@ -105,12 +106,12 @@ static MSFilterMethod ms_wp8cap_read_methods[] = {
 
 
 /******************************************************************************
- * Definition of the Windows Phone 8 Video Capture filter                     *
+ * Definition of the Windows Phone 8 video capture filter                     *
  *****************************************************************************/
 
 #define MS_WP8CAP_READ_ID			MS_FILTER_PLUGIN_ID
 #define MS_WP8CAP_READ_NAME			"MSWP8CapRead"
-#define MS_WP8CAP_READ_DESCRIPTION	"Windows Phone 8 Video capture"
+#define MS_WP8CAP_READ_DESCRIPTION	"Windows Phone 8 video capture"
 #define MS_WP8CAP_READ_CATEGORY		MS_FILTER_OTHER
 #define MS_WP8CAP_READ_ENC_FMT		NULL
 #define MS_WP8CAP_READ_NINPUTS		0
@@ -161,6 +162,10 @@ MS_FILTER_DESC_EXPORT(ms_wp8cap_read_desc)
 
 
 
+/******************************************************************************
+ * Definition of the Windows Phone 8 video camera detection                   *
+ *****************************************************************************/
+
 static void ms_wp8cap_detect(MSWebCamManager *m);
 static MSFilter *ms_wp8cap_create_reader(MSWebCam *cam);
 
@@ -185,6 +190,97 @@ static MSFilter *ms_wp8cap_create_reader(MSWebCam *cam) {
 
 
 
+/******************************************************************************
+ * Methods to (de)initialize and run the WP8 video display filter             *
+ *****************************************************************************/
+
+static void ms_wp8dis_init(MSFilter *f) {
+	MSWP8Dis *w = new MSWP8Dis();
+	f->data = w;
+}
+
+static void ms_wp8dis_process(MSFilter *f) {
+	MSWP8Dis *w = static_cast<MSWP8Dis *>(f->data);
+	if (!w->isStarted()) {
+		w->start();
+	}
+	if (w->isStarted()) {
+		w->feed(f);
+	}
+}
+
+static void ms_wp8dis_uninit(MSFilter *f) {
+	MSWP8Dis *w = static_cast<MSWP8Dis *>(f->data);
+	delete w;
+}
+
+
+/******************************************************************************
+ * Methods to configure the Windows Phone 8 video display filter              *
+ *****************************************************************************/
+
+static MSFilterMethod ms_wp8dis_methods[] = {
+	{	0,							NULL					}
+};
+
+
+/******************************************************************************
+ * Definition of the Windows Phone 8 video display filter                     *
+ *****************************************************************************/
+
+#define MS_WP8DIS_ID			MS_FILTER_PLUGIN_ID
+#define MS_WP8DIS_NAME			"MSWP8Dis"
+#define MS_WP8DIS_DESCRIPTION	"Windows Phone 8 video display"
+#define MS_WP8DIS_CATEGORY		MS_FILTER_OTHER
+#define MS_WP8DIS_ENC_FMT		NULL
+#define MS_WP8DIS_NINPUTS		1
+#define MS_WP8DIS_NOUTPUTS		0
+#define MS_WP8DIS_FLAGS			0
+
+#ifndef _MSC_VER
+
+MSFilterDesc ms_wp8dis_desc = {
+	.id = MS_WP8DIS_ID,
+	.name = MS_WP8DIS_NAME,
+	.text = MS_WP8DIS_DESCRIPTION,
+	.category = MS_WP8DIS_CATEGORY,
+	.enc_fmt = MS_WP8DIS_ENC_FMT,
+	.ninputs = MS_WP8DIS_NINPUTS,
+	.noutputs = MS_WP8DIS_NOUTPUTS,
+	.init = ms_wp8dis_init,
+	.preprocess = NULL,
+	.process = ms_wp8dis_process,
+	.postprocess = NULL,
+	.uninit = ms_wp8dis_uninit,
+	.methods = ms_wp8dis_methods,
+	.flags = MS_WP8DIS_FLAGS
+};
+
+#else
+
+MSFilterDesc ms_wp8dis_desc = {
+	MS_WP8DIS_ID,
+	MS_WP8DIS_NAME,
+	MS_WP8DIS_DESCRIPTION,
+	MS_WP8DIS_CATEGORY,
+	MS_WP8DIS_ENC_FMT,
+	MS_WP8DIS_NINPUTS,
+	MS_WP8DIS_NOUTPUTS,
+	ms_wp8dis_init,
+	NULL,
+	ms_wp8dis_process,
+	NULL,
+	ms_wp8dis_uninit,
+	ms_wp8dis_methods,
+	MS_WP8DIS_FLAGS
+};
+
+#endif
+
+MS_FILTER_DESC_EXPORT(ms_wp8dis_desc)
+
+
+
 
 #ifdef _MSC_VER
 #define MS_PLUGIN_DECLARE(type) extern "C" __declspec(dllexport) type
@@ -195,5 +291,6 @@ static MSFilter *ms_wp8cap_create_reader(MSWebCam *cam) {
 MS_PLUGIN_DECLARE(void) libmswp8vid_init(void) {
 	MSWebCamManager *manager = ms_web_cam_manager_get();
 	ms_web_cam_manager_register_desc(manager, &ms_wp8cap_desc);
+	ms_filter_register(&ms_wp8dis_desc);
 	ms_message("libmswp8vid plugin loaded");
 }

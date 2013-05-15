@@ -178,11 +178,13 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="..\..\mswp8dis.cpp" />
     <ClCompile Include="..\..\mswp8vid.cpp" />
     <ClCompile Include="..\..\mswp8cap.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\mswp8cap.h" />
+    <ClInclude Include="..\..\mswp8dis.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <Import Project="$(MSBuildExtensionsPath)\Microsoft\WindowsPhone\v$(TargetPlatformVersion)\Microsoft.Cpp.WindowsPhone.$(TargetPlatformVersion).targets" Condition="'$(Platform)'=='ARM'" />
