@@ -27,7 +27,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "mswp8dis.h"
 
 using namespace Microsoft::WRL;
-using namespace mediastreamer2;
+using namespace mswp8vid;
 
 
 bool MSWP8Dis::smInstantiated = false;
@@ -78,15 +78,15 @@ int MSWP8Dis::feed(MSFilter *f)
 
 
 
-MSWP8DisplayEventDispatcher::MSWP8DisplayEventDispatcher()
+DisplayEventDispatcher::DisplayEventDispatcher()
 {
 }
 
-MSWP8DisplayEventDispatcher::~MSWP8DisplayEventDispatcher()
+DisplayEventDispatcher::~DisplayEventDispatcher()
 {
 }
 
-void MSWP8DisplayEventDispatcher::writeSample(BYTE* bytes, int byteCount, UINT64 hnsPresentationTime)
+void DisplayEventDispatcher::writeSample(BYTE* bytes, int byteCount, UINT64 hnsPresentationTime)
 {
 	ComPtr<NativeBuffer> spNativeBuffer = NULL;
 	BYTE* pBuf = new BYTE[byteCount];
@@ -101,7 +101,7 @@ void MSWP8DisplayEventDispatcher::writeSample(BYTE* bytes, int byteCount, UINT64
 Globals^ Globals::singleton = nullptr;
 
 Globals::Globals()
-	: videoSampleDispatcher(ref new MSWP8DisplayEventDispatcher())
+	: videoSampleDispatcher(ref new DisplayEventDispatcher())
 {
 }
 
@@ -118,7 +118,7 @@ Globals^ Globals::Instance::get()
 	return Globals::singleton;
 }
 
-MSWP8DisplayEventDispatcher^ Globals::VideoSampleDispatcher::get()
+DisplayEventDispatcher^ Globals::VideoSampleDispatcher::get()
 {
 	return this->videoSampleDispatcher;
 }

@@ -28,7 +28,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "mswp8cap.h"
 #include "mswp8dis.h"
 
-using namespace mediastreamer2;
+using namespace mswp8vid;
 
 
 /******************************************************************************
