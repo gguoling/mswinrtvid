@@ -29,6 +29,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include <robuffer.h>
 #include <windows.storage.streams.h>
 #include "mediastreamer2/msfilter.h"
+#include "mediastreamer2/rfc3984.h"
 
 
 namespace mswp8vid
@@ -145,14 +146,23 @@ namespace mswp8vid
 			MSWP8Dis();
 			virtual ~MSWP8Dis();
 
+			int activate();
+			int deactivate();
 			bool isStarted() { return mIsStarted; }
 			void start();
 			void stop();
 			int feed(MSFilter *f);
 
 		private:
+			int nalusToFrame(MSQueue *nalus, bool *new_sps_pps);
+			void enlargeBitstream(int newSize);
+
 			static bool smInstantiated;
 			bool mIsInitialized;
+			bool mIsActivated;
 			bool mIsStarted;
+			Rfc3984Context *mRfc3984Unpacker;
+			int mBitstreamSize;
+			uint8_t *mBitstream;
 		};
 }

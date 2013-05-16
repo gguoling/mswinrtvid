@@ -199,6 +199,11 @@ static void ms_wp8dis_init(MSFilter *f) {
 	f->data = w;
 }
 
+static void ms_wp8dis_preprocess(MSFilter *f) {
+	MSWP8Dis *w = static_cast<MSWP8Dis *>(f->data);
+	w->activate();
+}
+
 static void ms_wp8dis_process(MSFilter *f) {
 	MSWP8Dis *w = static_cast<MSWP8Dis *>(f->data);
 	if (!w->isStarted()) {
@@ -207,6 +212,12 @@ static void ms_wp8dis_process(MSFilter *f) {
 	if (w->isStarted()) {
 		w->feed(f);
 	}
+}
+
+static void ms_wp8dis_postprocess(MSFilter *f) {
+	MSWP8Dis *w = static_cast<MSWP8Dis *>(f->data);
+	w->stop();
+	w->deactivate();
 }
 
 static void ms_wp8dis_uninit(MSFilter *f) {
@@ -248,9 +259,9 @@ MSFilterDesc ms_wp8dis_desc = {
 	.ninputs = MS_WP8DIS_NINPUTS,
 	.noutputs = MS_WP8DIS_NOUTPUTS,
 	.init = ms_wp8dis_init,
-	.preprocess = NULL,
+	.preprocess = ms_wp8dis_preprocess,
 	.process = ms_wp8dis_process,
-	.postprocess = NULL,
+	.postprocess = ms_wp8dis_postprocess,
 	.uninit = ms_wp8dis_uninit,
 	.methods = ms_wp8dis_methods,
 	.flags = MS_WP8DIS_FLAGS
@@ -267,9 +278,9 @@ MSFilterDesc ms_wp8dis_desc = {
 	MS_WP8DIS_NINPUTS,
 	MS_WP8DIS_NOUTPUTS,
 	ms_wp8dis_init,
-	NULL,
+	ms_wp8dis_preprocess,
 	ms_wp8dis_process,
-	NULL,
+	ms_wp8dis_postprocess,
 	ms_wp8dis_uninit,
 	ms_wp8dis_methods,
 	MS_WP8DIS_FLAGS
