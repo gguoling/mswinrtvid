@@ -35,7 +35,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 namespace mswp8vid
 {
-		class MSWP8CapSampleSink;
+		class SampleSink;
 
 		// Class to request sending IDR frame 2 seconds and 4 seconds after the beginning of streaming
 		class VideoStarter {
@@ -100,12 +100,12 @@ namespace mswp8vid
 			Windows::Phone::Media::Capture::CameraSensorLocation mCameraLocation;
 			Windows::Foundation::Size mDimensions;
 			Windows::Phone::Media::Capture::AudioVideoCaptureDevice^ mVideoDevice;
-			MSWP8CapSampleSink *mVideoSink;
+			SampleSink *mVideoSink;
 			IAudioVideoCaptureDeviceNative* mNativeVideoDevice;
 			Windows::Foundation::IAsyncAction^ mVideoCaptureAction;
 		};
 
-		class MSWP8CapSampleSink
+		class SampleSink
 			: public Microsoft::WRL::RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::RuntimeClassType::ClassicCom>, ICameraCaptureSampleSink>
 		{
 		public:

@@ -105,7 +105,7 @@ int MSWP8Cap::activate()
 				configure();
 
 				// Create the sink and notify the start completion
-				MakeAndInitialize<MSWP8CapSampleSink>(&(this->mVideoSink), this);
+				MakeAndInitialize<SampleSink>(&(this->mVideoSink), this);
 				mNativeVideoDevice->SetVideoSampleSink(mVideoSink);
 				SetEvent(mStartCompleted);
 			}
