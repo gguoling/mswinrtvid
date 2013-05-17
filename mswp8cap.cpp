@@ -41,7 +41,7 @@ bool MSWP8Cap::smInstantiated = false;
 
 MSWP8Cap::MSWP8Cap()
 	: mIsInitialized(false), mIsActivated(false), mIsStarted(false),
-	mRfc3984Packer(nullptr), mPackerMode(1), mStartTime(0), mSampleCount(-1), mFps(defaultFps), mBitrate(defaultBitrate),
+	mRfc3984Packer(nullptr), mPackerMode(1), mStartTime(0), mSamplesCount(0), mFps(defaultFps), mBitrate(defaultBitrate),
 	mCameraLocation(CameraSensorLocation::Front),
 	mDimensions(MS_VIDEO_SIZE_CIF_W, MS_VIDEO_SIZE_CIF_H),
 	mVideoDevice(nullptr)
@@ -222,6 +222,14 @@ int MSWP8Cap::feed(MSFilter *f)
 		bitstreamToMsgb(m->b_rptr, m->b_wptr - m->b_rptr, &nalus);
 		rfc3984_pack(mRfc3984Packer, &nalus, f->outputs[0], timestamp);
 		ms_queue_put(&mSampleToFreeQueue, m);
+
+		if (mSamplesCount == 0) {
+			starter.FirstIdrFrame(f->ticker->time);
+		} else if (starter.IdrFrameNeeded(f->ticker->time)) {
+			// Send I frame 2 seconds and 4 seconds after the beginning
+			requestIdrFrame();
+		}
+		mSamplesCount++;
 	}
 	ms_mutex_unlock(&mMutex);
 
@@ -463,4 +471,35 @@ void MSWP8Cap::detectCameras(MSWebCamManager *manager, MSWebCamDesc *desc)
 	if (count == 0) {
 		ms_warning("[MSWP8Cap] This device does not have a camera");
 	}
+}
+
+
+
+VideoStarter::VideoStarter()
+	: mNextTime(0), mIdrFrameCount(0)
+{
+}
+
+VideoStarter::~VideoStarter()
+{
+}
+
+void VideoStarter::FirstIdrFrame(uint64_t curtime)
+{
+	mNextTime = curtime + 2000;
+}
+
+bool VideoStarter::IdrFrameNeeded(uint64_t curtime)
+{
+	if (mNextTime == 0) return false;
+	if (curtime >= mNextTime) {
+		mIdrFrameCount++;
+		if (mIdrFrameCount == 1) {
+			mNextTime += 2000;
+		} else {
+			mNextTime = 0;
+		}
+		return true;
+	}
+	return false;
 }

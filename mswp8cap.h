@@ -37,6 +37,20 @@ namespace mswp8vid
 {
 		class MSWP8CapSampleSink;
 
+		// Class to request sending IDR frame 2 seconds and 4 seconds after the beginning of streaming
+		class VideoStarter {
+		public:
+			VideoStarter();
+			virtual ~VideoStarter();
+
+			void FirstIdrFrame(uint64_t curtime);
+			bool IdrFrameNeeded(uint64_t curtime);
+
+		private:
+			uint64_t mNextTime;
+			int mIdrFrameCount;
+		};
+
 		class MSWP8Cap {
 		public:
 			MSWP8Cap();
@@ -77,9 +91,10 @@ namespace mswp8vid
 			Rfc3984Context *mRfc3984Packer;
 			int mPackerMode;
 			uint64_t mStartTime;
-			int mSampleCount;
+			int mSamplesCount;
 			int mFps;
 			int mBitrate;
+			VideoStarter starter;
 			HANDLE mStartCompleted;
 			HANDLE mStopCompleted;
 			Windows::Phone::Media::Capture::CameraSensorLocation mCameraLocation;
