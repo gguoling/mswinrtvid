@@ -33,6 +33,7 @@ using namespace mswp8vid;
 
 
 static const int defaultFps = 15;
+static const int defaultBitrate = 384000;
 
 
 bool MSWP8Cap::smInstantiated = false;
@@ -40,7 +41,7 @@ bool MSWP8Cap::smInstantiated = false;
 
 MSWP8Cap::MSWP8Cap()
 	: mIsInitialized(false), mIsActivated(false), mIsStarted(false),
-	mRfc3984Packer(nullptr), mPackerMode(1), mStartTime(0), mSampleCount(-1), mFps(defaultFps),
+	mRfc3984Packer(nullptr), mPackerMode(1), mStartTime(0), mSampleCount(-1), mFps(defaultFps), mBitrate(defaultBitrate),
 	mCameraLocation(CameraSensorLocation::Front),
 	mDimensions(MS_VIDEO_SIZE_CIF_W, MS_VIDEO_SIZE_CIF_H),
 	mVideoDevice(nullptr)
@@ -272,6 +273,11 @@ void MSWP8Cap::setFps(int fps)
 	}
 }
 
+void MSWP8Cap::setBitrate(int bitrate)
+{
+	// TODO
+}
+
 MSVideoSize MSWP8Cap::getVideoSize()
 {
 	MSVideoSize vs;
@@ -301,6 +307,14 @@ void MSWP8Cap::setVideoSize(MSVideoSize vs)
 				ms_error("[MSWP8Cap] AsyncAction failed");
 			}
 		});
+	}
+}
+
+void MSWP8Cap::requestIdrFrame()
+{
+	if (mIsStarted) {
+		Platform::Boolean value = true;
+		mVideoDevice->SetProperty(KnownCameraAudioVideoProperties::H264RequestIdrFrame, value);
 	}
 }
 

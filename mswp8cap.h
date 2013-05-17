@@ -52,9 +52,13 @@ namespace mswp8vid
 			void OnSampleAvailable(ULONGLONG hnsPresentationTime, ULONGLONG hnsSampleDuration, DWORD cbSample, BYTE* pSample);
 
 			void setCameraLocation(uint32 location);
+			int getFps() { return mFps; }
 			void setFps(int fps);
+			int getBitrate() { return mBitrate; }
+			void setBitrate(int bitrate);
 			MSVideoSize getVideoSize();
 			void setVideoSize(MSVideoSize vs);
+			void requestIdrFrame();
 
 			static void detectCameras(MSWebCamManager *manager, MSWebCamDesc *desc);
 
@@ -75,6 +79,7 @@ namespace mswp8vid
 			uint64_t mStartTime;
 			int mSampleCount;
 			int mFps;
+			int mBitrate;
 			HANDLE mStartCompleted;
 			HANDLE mStopCompleted;
 			Windows::Phone::Media::Capture::CameraSensorLocation mCameraLocation;

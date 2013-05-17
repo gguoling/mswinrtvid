@@ -69,6 +69,12 @@ static void ms_wp8cap_read_uninit(MSFilter *f) {
  * Methods to configure the Windows Phone 8 video capture filter              *
  *****************************************************************************/
 
+static int ms_wp8cap_get_fps(MSFilter *f, void *arg) {
+	MSWP8Cap *r = static_cast<MSWP8Cap *>(f->data);
+	*((int *)arg) = r->getFps();
+	return 0;
+}
+
 static int ms_wp8cap_set_fps(MSFilter *f, void *arg) {
 	MSWP8Cap *r = static_cast<MSWP8Cap *>(f->data);
 	r->setFps(*((int*)arg));
@@ -82,13 +88,6 @@ static int ms_wp8cap_get_pix_fmt(MSFilter *f, void *arg) {
 	return 0;
 }
 
-static int ms_wp8cap_set_vsize(MSFilter *f, void *arg) {
-	MSWP8Cap *r = static_cast<MSWP8Cap *>(f->data);
-	MSVideoSize *vs = static_cast<MSVideoSize *>(arg);
-	r->setVideoSize(*vs);
-	return 0;
-}
-
 static int ms_wp8cap_get_vsize(MSFilter *f, void *arg) {
 	MSWP8Cap *r = static_cast<MSWP8Cap *>(f->data);
 	MSVideoSize *vs = static_cast<MSVideoSize *>(arg);
@@ -96,11 +95,42 @@ static int ms_wp8cap_get_vsize(MSFilter *f, void *arg) {
 	return 0;
 }
 
+static int ms_wp8cap_set_vsize(MSFilter *f, void *arg) {
+	MSWP8Cap *r = static_cast<MSWP8Cap *>(f->data);
+	MSVideoSize *vs = static_cast<MSVideoSize *>(arg);
+	r->setVideoSize(*vs);
+	return 0;
+}
+
+static int ms_wp8cap_get_bitrate(MSFilter *f, void *arg) {
+	MSWP8Cap *r = static_cast<MSWP8Cap *>(f->data);
+	*((int *)arg) = r->getBitrate();
+	return 0;
+}
+
+static int ms_wp8cap_set_bitrate(MSFilter *f, void *arg) {
+	MSWP8Cap *r = static_cast<MSWP8Cap *>(f->data);
+	r->setBitrate(*((int *)arg));
+	return 0;
+}
+
+static int ms_wp8cap_req_vfu(MSFilter *f, void *arg) {
+	MS_UNUSED(arg);
+	MSWP8Cap *r = static_cast<MSWP8Cap *>(f->data);
+	r->requestIdrFrame();
+	return 0;
+}
+
 static MSFilterMethod ms_wp8cap_read_methods[] = {
+	{	MS_FILTER_GET_FPS,			ms_wp8cap_get_fps		},
 	{	MS_FILTER_SET_FPS,			ms_wp8cap_set_fps		},
 	{	MS_FILTER_GET_PIX_FMT,		ms_wp8cap_get_pix_fmt	},
-	{	MS_FILTER_SET_VIDEO_SIZE,	ms_wp8cap_set_vsize		},
 	{	MS_FILTER_GET_VIDEO_SIZE,	ms_wp8cap_get_vsize		},
+	{	MS_FILTER_SET_VIDEO_SIZE,	ms_wp8cap_set_vsize		},
+	{	MS_FILTER_GET_BITRATE,		ms_wp8cap_get_bitrate	},
+	{	MS_FILTER_SET_BITRATE,		ms_wp8cap_set_bitrate	},
+	{	MS_FILTER_REQ_VFU,			ms_wp8cap_req_vfu		},
+	{	MS_VIDEO_ENCODER_REQ_VFU,	ms_wp8cap_req_vfu		},
 	{	0,							NULL					}
 };
 
