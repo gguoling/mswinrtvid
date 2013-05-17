@@ -120,6 +120,7 @@ namespace mswp8vid
 
 		public delegate void RenderStarted(Platform::String^ format, int width, int height);
 		public delegate void RenderStopped();
+		public delegate void RenderFormatChanged(Platform::String^ format, int width, int height);
 
 		public ref class Globals sealed
 		{
@@ -138,9 +139,11 @@ namespace mswp8vid
 
 			event RenderStarted^ renderStarted;
 			event RenderStopped^ renderStopped;
+			event RenderFormatChanged^ renderFormatChanged;
 
 			void startRendering(Platform::String^ format, int width, int height);
 			void stopRendering();
+			void changeRenderingFormat(Platform::String^ format, int width, int height);
 
 		private:
 			Globals();
@@ -165,13 +168,22 @@ namespace mswp8vid
 		private:
 			int nalusToFrame(MSQueue *nalus, bool *new_sps_pps);
 			void enlargeBitstream(int newSize);
+			bool checkSPSChange(mblk_t *sps);
+			bool checkPPSChange(mblk_t *pps);
+			void updateSPS(mblk_t *sps);
+			void updatePPS(mblk_t *pps);
+			void updateVideoSizeFromSPS();
 
 			static bool smInstantiated;
 			bool mIsInitialized;
 			bool mIsActivated;
 			bool mIsStarted;
+			int mWidth;
+			int mHeight;
 			Rfc3984Context *mRfc3984Unpacker;
 			int mBitstreamSize;
 			uint8_t *mBitstream;
+			mblk_t *mSPS;
+			mblk_t *mPPS;
 		};
 }

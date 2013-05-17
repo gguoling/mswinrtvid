@@ -108,6 +108,13 @@ namespace mswp8vid
             }
         }
 
+        public void ChangeFormat(String format, int width, int height)
+        {
+            this.format = format;
+            this.frameWidth = width;
+            this.frameHeight = height;
+        }
+
         private void OnSampleReceived(Windows.Storage.Streams.IBuffer pBuffer, UInt64 hnsPresentationTime)
         {
             lock (lockObj)

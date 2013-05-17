@@ -11,6 +11,7 @@ namespace mswp8vid
         {
             mswp8vid.Globals.Instance.renderStarted += Start;
             mswp8vid.Globals.Instance.renderStopped += Stop;
+            mswp8vid.Globals.Instance.renderFormatChanged += ChangeFormat;
         }
 
         public void Start(String format, int width, int height)
@@ -54,6 +55,17 @@ namespace mswp8vid
                 this.mediastreamer.Dispose();
                 this.mediastreamer = null;
                 this.isRendering = false;
+            });
+        }
+
+        public void ChangeFormat(String format, int width, int height)
+        {
+            Deployment.Current.Dispatcher.BeginInvoke(() =>
+            {
+                if (this.streamSource != null)
+                {
+                    this.streamSource.ChangeFormat(format, width, height);
+                }
             });
         }
 

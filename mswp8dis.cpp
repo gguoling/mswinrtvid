@@ -30,18 +30,51 @@ using namespace Microsoft::WRL;
 using namespace mswp8vid;
 
 
+
+static uint8_t get_u8_at_bit_offset(uint8_t *data, uint32_t *bit_offset) {
+	uint8_t res = ((data[*bit_offset / 8] << (*bit_offset % 8)) | (data[(*bit_offset / 8) + 1] >> (8 - (*bit_offset % 8))));
+	*bit_offset += 8;
+	return res;
+}
+
+static uint8_t get_u1_at_bit_offset(uint8_t *data, uint32_t *bit_offset) {
+	uint8_t mod = *bit_offset % 8;
+	uint8_t res = (data[*bit_offset / 8] & ((1 << (8 - mod)) - 1)) >> (7 - mod);
+	*bit_offset += 1;
+	return res;
+}
+
+static uint8_t get_ue_at_bit_offset(uint8_t *data, uint32_t *bit_offset) {
+	uint8_t b;
+	uint8_t i;
+	uint8_t res = 0;
+	int leading_zero_bits = -1;
+	for (b = 0; !b; leading_zero_bits++) {
+		b = get_u1_at_bit_offset(data, bit_offset);
+	}
+	for (i = 0; i < leading_zero_bits; i++) {
+		b = get_u1_at_bit_offset(data, bit_offset);
+		res <<= 1;
+		res |= b;
+	}
+	res += (1 << leading_zero_bits) - 1;
+	return res;
+}
+
+
+
 bool MSWP8Dis::smInstantiated = false;
 
 
 MSWP8Dis::MSWP8Dis()
-	: mIsInitialized(false), mIsActivated(false), mIsStarted(false)
+	: mIsInitialized(false), mIsActivated(false), mIsStarted(false), mWidth(MS_VIDEO_SIZE_CIF_W), mHeight(MS_VIDEO_SIZE_CIF_H),
+	mRfc3984Unpacker(nullptr), mBitstreamSize(65536), mSPS(nullptr), mPPS(nullptr)
 {
 	if (smInstantiated) {
 		ms_error("[MSWP8Dis] A video display filter is already instantiated. A second one can not be created.");
 		return;
 	}
 
-	mBitstreamSize = 65536;
 	mBitstream = (uint8_t *)ms_malloc0(mBitstreamSize);
 	mIsInitialized = true;
 	smInstantiated = true;
@@ -78,7 +111,7 @@ void MSWP8Dis::start()
 	if (!mIsStarted && mIsActivated) {
 		mIsStarted = true;
 		Platform::String^ format = ref new Platform::String(L"H264");
-		Globals::Instance->startRendering(format, 640, 480);
+		Globals::Instance->startRendering(format, mWidth, mHeight);
 	}
 }
 
@@ -102,6 +135,10 @@ int MSWP8Dis::feed(MSFilter *f)
 			if (!ms_queue_empty(&nalus)) {
 				bool need_reinit = false;
 				int size = nalusToFrame(&nalus, &need_reinit);
+				if (need_reinit) {
+					Platform::String^ format = ref new Platform::String(L"H264");
+					Globals::Instance->changeRenderingFormat(format, mWidth, mHeight);
+				}
 				if (size > 0) {
 					Globals::Instance->VideoSampleDispatcher->writeSample(mBitstream, size, f->ticker->time * 10000LL);
 				}
@@ -139,10 +176,10 @@ int MSWP8Dis::nalusToFrame(MSQueue *nalus, bool *new_sps_pps)
 			dst += size;
 		} else {
 			nalu_type = (*src) & ((1 << 5) - 1);
-			/*if (nalu_type == 7)
-				*new_sps_pps = check_sps_change(d, im) || *new_sps_pps;
+			if (nalu_type == 7)
+				*new_sps_pps = checkSPSChange(im) || *new_sps_pps;
 			if (nalu_type == 8)
-				*new_sps_pps = check_pps_change(d, im) || *new_sps_pps;*/
+				*new_sps_pps = checkPPSChange(im) || *new_sps_pps;
 			if (start_picture || nalu_type == 7/*SPS*/ || nalu_type == 8/*PPS*/ ) {
 				*dst++ = 0;
 				start_picture = false;
@@ -175,6 +212,112 @@ void MSWP8Dis::enlargeBitstream(int newSize)
 {
 	mBitstreamSize = newSize;
 	mBitstream = (uint8_t *)ms_realloc(mBitstream, mBitstreamSize);
+}
+
+bool MSWP8Dis::checkSPSChange(mblk_t *sps)
+{
+	bool ret = false;
+	if (mSPS) {
+		ret = (msgdsize(sps) != msgdsize(mSPS)) || (memcmp(mSPS->b_rptr, mSPS->b_rptr, msgdsize(sps)) != 0);
+		if (ret) {
+			ms_message("SPS changed ! %i,%i", msgdsize(sps), msgdsize(mSPS));
+			updateSPS(sps);
+			updatePPS(nullptr);
+		}
+	} else {
+		ms_message("Receiving first SPS");
+		updateSPS(sps);
+		ret = true;
+	}
+	return ret;
+}
+
+bool MSWP8Dis::checkPPSChange(mblk_t *pps)
+{
+	bool ret = false;
+	if (mPPS) {
+		ret = (msgdsize(pps) != msgdsize(mPPS)) || (memcmp(mPPS->b_rptr, pps->b_rptr, msgdsize(pps)) != 0);
+		if (ret) {
+			ms_message("PPS changed ! %i,%i", msgdsize(pps), msgdsize(mPPS));
+			updatePPS(pps);
+		}
+	} else {
+		ms_message("Receiving first PPS");
+		updatePPS(pps);
+		ret = true;
+	}
+	return ret;
+}
+
+void MSWP8Dis::updateSPS(mblk_t *sps)
+{
+	if (mSPS) freemsg(mSPS);
+	mSPS = dupb(sps);
+	updateVideoSizeFromSPS();
+}
+
+void MSWP8Dis::updatePPS(mblk_t *pps)
+{
+	if (mPPS) freemsg(mPPS);
+	if (pps) mPPS = dupb(pps);
+	else mPPS = nullptr;
+}
+
+void MSWP8Dis::updateVideoSizeFromSPS()
+{
+	uint8_t *data = (uint8_t *)mSPS->b_rptr;
+	uint32_t bit_offset = 8;	// Skip nal header, we know if it is only 1 byte long since it is an SPS
+	uint8_t i;
+	uint8_t profile_idc;
+	uint8_t chroma_format_idc;
+	uint8_t seq_scaling_matrix_present_flag;
+	uint8_t pic_order_cnt_type;
+	uint8_t num_ref_frames_in_pic_order_cnt_cycle;
+	uint8_t pic_width_in_mbs_minus1;
+	uint8_t pic_height_in_map_units_minus1;
+	uint8_t dummy;
+
+	profile_idc = get_u8_at_bit_offset(data, &bit_offset);
+	dummy = get_u8_at_bit_offset(data, &bit_offset); // constraint_set*
+	dummy = get_u8_at_bit_offset(data, &bit_offset); // level_idc
+	dummy = get_ue_at_bit_offset(data, &bit_offset); // seq_parameter_set_id
+	if ((profile_idc == 100) || (profile_idc == 110) || (profile_idc == 122) || (profile_idc == 244) || (profile_idc == 44)
+		|| (profile_idc == 83) || (profile_idc == 86) || (profile_idc == 118) || (profile_idc == 128)) {
+		chroma_format_idc = get_ue_at_bit_offset(data, &bit_offset);
+		if (chroma_format_idc == 3) {
+			dummy = get_u1_at_bit_offset(data, &bit_offset);
+		}
+		dummy = get_ue_at_bit_offset(data, &bit_offset); // bit_depth_luma_minus8
+		dummy = get_ue_at_bit_offset(data, &bit_offset); // bit_depth_chroma_minus8
+		dummy = get_u1_at_bit_offset(data, &bit_offset); // qpprime_y_zero_transform_bypass_flag
+		seq_scaling_matrix_present_flag = get_u1_at_bit_offset(data, &bit_offset);
+		if (seq_scaling_matrix_present_flag) {
+			for (i = 0; i < ((chroma_format_idc != 3) ? 8 : 12); i++) {
+				dummy = get_u1_at_bit_offset(data, &bit_offset); // seq_scaling_list_present_flag[i]
+			}
+		}
+	}
+	dummy = get_ue_at_bit_offset(data, &bit_offset); // log2_max_frame_num_minus4
+	pic_order_cnt_type = get_ue_at_bit_offset(data, &bit_offset);
+	if (pic_order_cnt_type == 0) {
+		dummy = get_ue_at_bit_offset(data, &bit_offset); // log2_max_pic_order_cnt_lsb_minus4
+	} else if (pic_order_cnt_type == 1) {
+		dummy = get_u1_at_bit_offset(data, &bit_offset); // delta_pic_order_always_zero_flag
+		dummy = get_ue_at_bit_offset(data, &bit_offset); // offset_for_non_ref_pic
+		dummy = get_ue_at_bit_offset(data, &bit_offset); // offset_for_top_to_bottom_field
+		num_ref_frames_in_pic_order_cnt_cycle = get_ue_at_bit_offset(data, &bit_offset);
+		for (i = 0; i < num_ref_frames_in_pic_order_cnt_cycle; i++) {
+			dummy = get_ue_at_bit_offset(data, &bit_offset); // offset_for_ref_frame[i]
+		}
+	}
+	dummy = get_ue_at_bit_offset(data, &bit_offset); // max_num_ref_frames
+	dummy = get_u1_at_bit_offset(data, &bit_offset); // gaps_in_frame_num_value_allowed_flag
+	pic_width_in_mbs_minus1 = get_ue_at_bit_offset(data, &bit_offset);
+	pic_height_in_map_units_minus1 = get_ue_at_bit_offset(data, &bit_offset);
+ 	mWidth = (pic_width_in_mbs_minus1 + 1) * 16;
+ 	mHeight = (pic_height_in_map_units_minus1 + 1) * 16;
+	ms_message("Change video size from SPS: %ux%u", mWidth, mHeight);
+	MS_UNUSED(dummy);
 }
 
 
@@ -232,4 +375,9 @@ void Globals::startRendering(Platform::String^ format, int width, int height)
 void Globals::stopRendering()
 {
 	renderStopped();
+}
+
+void Globals::changeRenderingFormat(Platform::String^ format, int width, int height)
+{
+	renderFormatChanged(format, width, height);
 }
