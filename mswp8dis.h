@@ -118,6 +118,9 @@ namespace mswp8vid
 			BOOL m_bIsOwner;
 		};
 
+		public delegate void RenderStarted(Platform::String^ format, int width, int height);
+		public delegate void RenderStopped();
+
 		public ref class Globals sealed
 		{
 		public:
@@ -132,6 +135,12 @@ namespace mswp8vid
 			{
 				DisplayEventDispatcher^ get();
 			}
+
+			event RenderStarted^ renderStarted;
+			event RenderStopped^ renderStopped;
+
+			void startRendering(Platform::String^ format, int width, int height);
+			void stopRendering();
 
 		private:
 			Globals();

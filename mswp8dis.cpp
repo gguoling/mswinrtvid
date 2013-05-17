@@ -77,12 +77,17 @@ void MSWP8Dis::start()
 {
 	if (!mIsStarted && mIsActivated) {
 		mIsStarted = true;
+		Platform::String^ format = ref new Platform::String(L"H264");
+		Globals::Instance->startRendering(format, 640, 480);
 	}
 }
 
 void MSWP8Dis::stop()
 {
-	mIsStarted = false;
+	if (mIsStarted) {
+		mIsStarted = false;
+		Globals::Instance->stopRendering();
+	}
 }
 
 int MSWP8Dis::feed(MSFilter *f)
@@ -217,4 +222,14 @@ Globals^ Globals::Instance::get()
 DisplayEventDispatcher^ Globals::VideoSampleDispatcher::get()
 {
 	return this->videoSampleDispatcher;
+}
+
+void Globals::startRendering(Platform::String^ format, int width, int height)
+{
+	renderStarted(format, width, height);
+}
+
+void Globals::stopRendering()
+{
+	renderStopped();
 }

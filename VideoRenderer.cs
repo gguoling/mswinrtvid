@@ -9,9 +9,11 @@ namespace mswp8vid
     {
         internal VideoRenderer()
         {
+            mswp8vid.Globals.Instance.renderStarted += Start;
+            mswp8vid.Globals.Instance.renderStopped += Stop;
         }
 
-        public void Start()
+        public void Start(String format, int width, int height)
         {
             if (this.isRendering)
             {
@@ -26,7 +28,7 @@ namespace mswp8vid
                     {
                         this.mediastreamer = MediaStreamerFactory.CreateMediaStreamer(5060);
                     }
-                    this.streamSource = new VideoStreamSource(640, 480);
+                    this.streamSource = new VideoStreamSource(format, width, height);
                     this.mediastreamer.SetSource(this.streamSource);
                     this.isRendering = true;
                 }

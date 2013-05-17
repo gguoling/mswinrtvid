@@ -22,8 +22,9 @@ namespace mswp8vid
         }
 
 
-        public VideoStreamSource(int frameWidth, int frameHeight)
+        public VideoStreamSource(String format, int frameWidth, int frameHeight)
         {
+            this.format = format;
             this.frameWidth = frameWidth;
             this.frameHeight = frameHeight;
             this.sampleQueue = new Queue<Sample>(VideoStreamSource.maxSampleQueueSize);
@@ -125,7 +126,7 @@ namespace mswp8vid
         private void CreateMediaDescription()
         {
             Dictionary<MediaStreamAttributeKeys, string> streamAttributes = new Dictionary<MediaStreamAttributeKeys, string>();
-            streamAttributes[MediaStreamAttributeKeys.VideoFourCC] = "H264";
+            streamAttributes[MediaStreamAttributeKeys.VideoFourCC] = this.format;
             streamAttributes[MediaStreamAttributeKeys.Width] = this.frameWidth.ToString();
             streamAttributes[MediaStreamAttributeKeys.Height] = this.frameHeight.ToString();
             this.streamDesc = new MediaStreamDescription(MediaStreamType.Video, streamAttributes);
@@ -151,6 +152,7 @@ namespace mswp8vid
         private const int maxSampleQueueSize = 4;
 
         private bool isDisposed = false;
+        private String format;
         private int frameWidth;
         private int frameHeight;
         private int outstandingSamplesCount;
