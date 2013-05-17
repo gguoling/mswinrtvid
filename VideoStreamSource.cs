@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Windows.Media;
+using System.Threading;
 
 namespace mswp8vid
 {
@@ -27,6 +28,7 @@ namespace mswp8vid
             this.frameHeight = frameHeight;
             this.sampleQueue = new Queue<Sample>(VideoStreamSource.maxSampleQueueSize);
             this.outstandingSamplesCount = 0;
+            this.shutdownEvent = new ManualResetEvent(false);
             mswp8vid.Globals.Instance.VideoSampleDispatcher.sampleReceived += OnSampleReceived;
         }
 
@@ -59,7 +61,6 @@ namespace mswp8vid
 
         protected override void GetSampleAsync(MediaStreamType mediaStreamType)
         {
-            System.Diagnostics.Debug.WriteLine("GetSampleAsync " + mediaStreamType.ToString());
             if (mediaStreamType == MediaStreamType.Video)
             {
                 lock (lockObj)
@@ -92,7 +93,18 @@ namespace mswp8vid
 
         public void Shutdown()
         {
-            // TODO
+            this.shutdownEvent.Set();
+            lock (lockObj)
+            {
+                if (this.outstandingSamplesCount > 0)
+                {
+                    // ReportGetSampleCompleted must be called after GetSampleAsync to avoid memory leak. So, send
+                    // an empty MediaStreamSample here.
+                    MediaStreamSample msSample = new MediaStreamSample(this.streamDesc, null, 0, 0, 0, this.emptyAttributes);
+                    ReportGetSampleCompleted(msSample);
+                    this.outstandingSamplesCount = 0;
+                }
+            }
         }
 
         private void OnSampleReceived(Windows.Storage.Streams.IBuffer pBuffer, UInt64 hnsPresentationTime)
@@ -121,14 +133,17 @@ namespace mswp8vid
 
         private void FeedSamples()
         {
-            while (this.sampleQueue.Count > 0 && this.outstandingSamplesCount > 0)
+            if (!(this.shutdownEvent.WaitOne(0)))
             {
-                Sample sample = this.sampleQueue.Dequeue();
-                Stream s = System.Runtime.InteropServices.WindowsRuntime.WindowsRuntimeBufferExtensions.AsStream(sample.buffer);
+                while (this.sampleQueue.Count > 0 && this.outstandingSamplesCount > 0)
+                {
+                    Sample sample = this.sampleQueue.Dequeue();
+                    Stream s = System.Runtime.InteropServices.WindowsRuntime.WindowsRuntimeBufferExtensions.AsStream(sample.buffer);
 
-                MediaStreamSample msSample = new MediaStreamSample(this.streamDesc, s, 0, s.Length, (long)sample.presentationTime, this.emptyAttributes);
-                ReportGetSampleCompleted(msSample);
-                this.outstandingSamplesCount--;
+                    MediaStreamSample msSample = new MediaStreamSample(this.streamDesc, s, 0, s.Length, (long)sample.presentationTime, this.emptyAttributes);
+                    ReportGetSampleCompleted(msSample);
+                    this.outstandingSamplesCount--;
+                }
             }
         }
 
@@ -143,5 +158,6 @@ namespace mswp8vid
         private Queue<Sample> sampleQueue;
         private MediaStreamDescription streamDesc;
         private Dictionary<MediaSampleAttributeKeys, string> emptyAttributes = new Dictionary<MediaSampleAttributeKeys, string>();
+        private ManualResetEvent shutdownEvent;
     }
 }
