@@ -197,25 +197,31 @@ MS_FILTER_DESC_EXPORT(ms_wp8cap_read_desc)
  *****************************************************************************/
 
 static void ms_wp8cap_detect(MSWebCamManager *m);
-static MSFilter *ms_wp8cap_create_reader(MSWebCam *cam);
-
-static MSWebCamDesc ms_wp8cap_desc = {
-	"MSWP8Cap",
-	ms_wp8cap_detect,
-	NULL,
-	ms_wp8cap_create_reader,
-	NULL
-};
-
-static void ms_wp8cap_detect(MSWebCamManager *m) {
-	MSWP8Cap::detectCameras(m, &ms_wp8cap_desc);
-}
 
 static MSFilter *ms_wp8cap_create_reader(MSWebCam *cam) {
 	MSFilter *f = ms_filter_new_from_desc(&ms_wp8cap_read_desc);
 	MSWP8Cap *r = static_cast<MSWP8Cap *>(f->data);
 	r->setCameraLocation((uint32)cam->data);
 	return f;
+}
+
+static bool_t ms_wp8cap_encode_to_mime_type(MSWebCam *cam, const char *mime_type) {
+	MS_UNUSED(cam);
+	if (strcmp(mime_type, "H264") == 0) return TRUE;
+	return FALSE;
+}
+
+static MSWebCamDesc ms_wp8cap_desc = {
+	"MSWP8Cap",
+	ms_wp8cap_detect,
+	NULL,
+	ms_wp8cap_create_reader,
+	NULL,
+	ms_wp8cap_encode_to_mime_type
+};
+
+static void ms_wp8cap_detect(MSWebCamManager *m) {
+	MSWP8Cap::detectCameras(m, &ms_wp8cap_desc);
 }
 
 
@@ -260,8 +266,17 @@ static void ms_wp8dis_uninit(MSFilter *f) {
  * Methods to configure the Windows Phone 8 video display filter              *
  *****************************************************************************/
 
+static int ms_wp8dis_support_decoding(MSFilter *f, void *arg) {
+	MS_UNUSED(f);
+	MSVideoDisplayDecodingSupport *decoding_support = static_cast<MSVideoDisplayDecodingSupport *>(arg);
+	if (strcmp(decoding_support->mime_type, "H264") == 0) decoding_support->supported = TRUE;
+	else decoding_support->supported = FALSE;
+	return 0;
+}
+
 static MSFilterMethod ms_wp8dis_methods[] = {
-	{	0,							NULL					}
+	{	MS_VIDEO_DISPLAY_SUPPORT_DECODING,	ms_wp8dis_support_decoding	},
+	{	0,									NULL						}
 };
 
 
