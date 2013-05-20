@@ -83,8 +83,8 @@ int MSWP8Cap::activate()
 	IAsyncOperation<AudioVideoCaptureDevice^> ^openOperation = nullptr;
 
 	if (!mIsInitialized) return -1;
-	if (!selectBestVideoSize()) return -1;
 
+	selectBestVideoSize();
 	mRfc3984Packer = rfc3984_new();
 	rfc3984_set_mode(mRfc3984Packer, mPackerMode);
 	rfc3984_enable_stap_a(mRfc3984Packer, FALSE);
@@ -365,6 +365,7 @@ bool MSWP8Cap::selectBestVideoSize()
 	Collections::IIterator<Size> ^availableSizesIterator;
 	MSVideoSize requestedSize;
 	MSVideoSize bestFoundSize;
+	MSVideoSize minSize = { 65536, 65536 };
 
 	bestFoundSize.width = bestFoundSize.height = 0;
 	requestedSize.width = (int)mDimensions.Width;
@@ -381,11 +382,16 @@ bool MSWP8Cap::selectBestVideoSize()
 				bestFoundSize = currentSize;
 			}
 		}
+		if (ms_video_size_greater_than(minSize, currentSize)) {
+			minSize = currentSize;
+		}
 		availableSizesIterator->MoveNext();
 	}
 
 	if ((bestFoundSize.width == 0) && bestFoundSize.height == 0) {
-		ms_error("[MSWP8Cap] This camera does not support our video size");
+		ms_warning("[MSWP8Cap] This camera does not support our video size, use minimum size available");
+		mDimensions.Width = (float)minSize.width;
+		mDimensions.Height = (float)minSize.height;
 		return false;
 	}
 
