@@ -66,8 +66,8 @@ namespace mswp8vid
 			void OnSampleAvailable(ULONGLONG hnsPresentationTime, ULONGLONG hnsSampleDuration, DWORD cbSample, BYTE* pSample);
 
 			void setCameraLocation(uint32 location);
-			int getFps() { return mFps; }
-			void setFps(int fps);
+			float getFps() { return mFps; }
+			void setFps(float fps);
 			int getBitrate() { return mBitrate; }
 			void setBitrate(int bitrate);
 			MSVideoSize getVideoSize();
@@ -92,7 +92,7 @@ namespace mswp8vid
 			int mPackerMode;
 			uint64_t mStartTime;
 			int mSamplesCount;
-			int mFps;
+			float mFps;
 			int mBitrate;
 			VideoStarter starter;
 			HANDLE mStartCompleted;

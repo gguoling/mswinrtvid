@@ -32,7 +32,7 @@ using namespace Windows::Phone::Media::Capture;
 using namespace mswp8vid;
 
 
-static const int defaultFps = 15;
+static const float defaultFps = 15.0f;
 static const int defaultBitrate = 384000;
 
 
@@ -265,7 +265,7 @@ void MSWP8Cap::setCameraLocation(uint32 location)
 	mCameraLocation = (CameraSensorLocation)location;
 }
 
-void MSWP8Cap::setFps(int fps)
+void MSWP8Cap::setFps(float fps)
 {
 	if (mIsActivated) {
 		uint32 value = (uint32)fps;
@@ -275,7 +275,8 @@ void MSWP8Cap::setFps(int fps)
 		if (value < min) value = min;
 		else if (value > max) value = max;
 		mVideoDevice->SetProperty(KnownCameraAudioVideoProperties::VideoFrameRate, value);
-		mFps = (uint32)mVideoDevice->GetProperty(KnownCameraAudioVideoProperties::VideoFrameRate);
+		value = safe_cast<uint32>(mVideoDevice->GetProperty(KnownCameraAudioVideoProperties::VideoFrameRate));
+		mFps = (float)value;
 	} else {
 		mFps = fps;
 	}

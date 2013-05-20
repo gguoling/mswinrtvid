@@ -71,13 +71,13 @@ static void ms_wp8cap_read_uninit(MSFilter *f) {
 
 static int ms_wp8cap_get_fps(MSFilter *f, void *arg) {
 	MSWP8Cap *r = static_cast<MSWP8Cap *>(f->data);
-	*((int *)arg) = r->getFps();
+	*((float *)arg) = r->getFps();
 	return 0;
 }
 
 static int ms_wp8cap_set_fps(MSFilter *f, void *arg) {
 	MSWP8Cap *r = static_cast<MSWP8Cap *>(f->data);
-	r->setFps(*((int*)arg));
+	r->setFps(*((float *)arg));
 	return 0;
 }
 
