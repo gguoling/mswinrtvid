@@ -84,7 +84,7 @@ static int ms_wp8cap_set_fps(MSFilter *f, void *arg) {
 static int ms_wp8cap_get_pix_fmt(MSFilter *f, void *arg) {
 	MS_UNUSED(f);
 	MSPixFmt *fmt = static_cast<MSPixFmt *>(arg);
-	*fmt = MS_PIX_FMT_UNKNOWN;
+	*fmt = MS_H264;
 	return 0;
 }
 
@@ -142,8 +142,8 @@ static MSFilterMethod ms_wp8cap_read_methods[] = {
 #define MS_WP8CAP_READ_ID			MS_FILTER_PLUGIN_ID
 #define MS_WP8CAP_READ_NAME			"MSWP8CapRead"
 #define MS_WP8CAP_READ_DESCRIPTION	"Windows Phone 8 video capture"
-#define MS_WP8CAP_READ_CATEGORY		MS_FILTER_OTHER
-#define MS_WP8CAP_READ_ENC_FMT		NULL
+#define MS_WP8CAP_READ_CATEGORY		MS_FILTER_ENCODING_CAPTURER
+#define MS_WP8CAP_READ_ENC_FMT		"H264"
 #define MS_WP8CAP_READ_NINPUTS		0
 #define MS_WP8CAP_READ_NOUTPUTS		1
 #define MS_WP8CAP_READ_FLAGS		0
@@ -287,8 +287,8 @@ static MSFilterMethod ms_wp8dis_methods[] = {
 #define MS_WP8DIS_ID			MS_FILTER_PLUGIN_ID
 #define MS_WP8DIS_NAME			"MSWP8Dis"
 #define MS_WP8DIS_DESCRIPTION	"Windows Phone 8 video display"
-#define MS_WP8DIS_CATEGORY		MS_FILTER_OTHER
-#define MS_WP8DIS_ENC_FMT		NULL
+#define MS_WP8DIS_CATEGORY		MS_FILTER_DECODING_RENDERER
+#define MS_WP8DIS_ENC_FMT		"H264"
 #define MS_WP8DIS_NINPUTS		1
 #define MS_WP8DIS_NOUTPUTS		0
 #define MS_WP8DIS_FLAGS			0
@@ -347,6 +347,7 @@ MS_FILTER_DESC_EXPORT(ms_wp8dis_desc)
 MS_PLUGIN_DECLARE(void) libmswp8vid_init(void) {
 	MSWebCamManager *manager = ms_web_cam_manager_get();
 	ms_web_cam_manager_register_desc(manager, &ms_wp8cap_desc);
+	ms_filter_register(&ms_wp8cap_read_desc);
 	ms_filter_register(&ms_wp8dis_desc);
 	ms_message("libmswp8vid plugin loaded");
 }
