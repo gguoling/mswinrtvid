@@ -287,6 +287,12 @@ private:
 	T mObj;
 };
 
+static int ms_wp8dis_get_native_window_id(MSFilter *f, void *arg) {
+	MSWP8Dis *w = static_cast<MSWP8Dis *>(f->data);
+	*((unsigned long *)arg) = w->getVideoRenderer()->GetNativeWindowId();
+	return 0;
+}
+
 static int ms_wp8dis_set_native_window_id(MSFilter *f, void *arg) {
 	MSWP8Dis *w = static_cast<MSWP8Dis *>(f->data);
 	unsigned long *ptr = (unsigned long *)arg;
@@ -298,6 +304,7 @@ static int ms_wp8dis_set_native_window_id(MSFilter *f, void *arg) {
 
 static MSFilterMethod ms_wp8dis_methods[] = {
 	{	MS_VIDEO_DISPLAY_SUPPORT_DECODING,		ms_wp8dis_support_decoding		},
+	{	MS_VIDEO_DISPLAY_GET_NATIVE_WINDOW_ID,	ms_wp8dis_get_native_window_id	},
 	{	MS_VIDEO_DISPLAY_SET_NATIVE_WINDOW_ID,	ms_wp8dis_set_native_window_id	},
 	{	0,										NULL							}
 };

@@ -32,10 +32,11 @@ namespace Mediastreamer2
 		public interface class IVideoRenderer
 		{
 		public:
+			int GetNativeWindowId();
 			void Start(Platform::String^ format, int width, int height);
 			void Stop();
 			void ChangeFormat(Platform::String^ format, int width, int height);
-			IVideoDispatcher^ GetDispatcher();
+			property IVideoDispatcher^ Dispatcher { IVideoDispatcher^ get(); };
 		};
 	}
 }

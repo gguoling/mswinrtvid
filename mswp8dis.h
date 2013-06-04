@@ -47,6 +47,7 @@ namespace mswp8vid
 		void start();
 		void stop();
 		int feed(MSFilter *f);
+		Mediastreamer2::WP8Video::IVideoRenderer^ getVideoRenderer();
 		void setVideoRenderer(Mediastreamer2::WP8Video::IVideoRenderer^ renderer);
 
 	private:

@@ -148,11 +148,10 @@ int MSWP8Dis::feed(MSFilter *f)
 					}
 				}
 				if ((size > 0) && (mRenderer != nullptr)) {
-					IVideoDispatcher^ dispatcher = mRenderer->GetDispatcher();
-					if (dispatcher != nullptr) {
+					if (mRenderer->Dispatcher != nullptr) {
 						ComPtr<VideoBuffer> spVideoBuffer = NULL;
 						MakeAndInitialize<VideoBuffer>(&spVideoBuffer, (BYTE *)mBitstream, size);
-						dispatcher->OnSampleReceived(VideoBuffer::GetIBuffer(spVideoBuffer), f->ticker->time * 10000LL);
+						mRenderer->Dispatcher->OnSampleReceived(VideoBuffer::GetIBuffer(spVideoBuffer), f->ticker->time * 10000LL);
 					}
 				}
 			}
@@ -160,6 +159,11 @@ int MSWP8Dis::feed(MSFilter *f)
 	}
 
 	return 0;
+}
+
+Mediastreamer2::WP8Video::IVideoRenderer^ MSWP8Dis::getVideoRenderer()
+{
+	return mRenderer;
 }
 
 void MSWP8Dis::setVideoRenderer(IVideoRenderer^ renderer)

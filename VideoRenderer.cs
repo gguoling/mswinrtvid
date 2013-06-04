@@ -13,20 +13,29 @@ namespace Mediastreamer2
         {
             public VideoRenderer()
             {
-                Random rand = new Random();
-                this.streamId = rand.Next(0, 65535);
+                this.streamId = GetHashCode();
             }
 
-            public Uri RemoteStreamUri
+            public IVideoDispatcher Dispatcher
             {
                 get
                 {
-                    return new Uri("ms-media-stream-id:MediaStreamer-" + this.streamId);
+                    return this.streamSource;
                 }
+            }
+
+            public static Uri StreamUri(Int32 streamId)
+            {
+                return new Uri("ms-media-stream-id:MediaStreamer-" + streamId);
             }
 
             public static Uri FrontFacingCameraStreamUri = new Uri("ms-media-stream-id:camera-FrontFacing");
             public static Uri RearFacingCameraStreamUri = new Uri("ms-media-stream-id:camera-RearFacing");
+
+            public int GetNativeWindowId()
+            {
+                return this.streamId;
+            }
 
             public void Start(String format, int width, int height)
             {
@@ -49,7 +58,7 @@ namespace Mediastreamer2
                     }
                     catch (Exception e)
                     {
-                        Debug.WriteLine("[MSWP8Vid] VideoRenderer.Start() failed: " + e.Message);
+                        Debug.WriteLine("[VideoRenderer] VideoRenderer.Start() failed: " + e.Message);
                     }
                 });
             }
@@ -83,13 +92,8 @@ namespace Mediastreamer2
                 });
             }
 
-            public IVideoDispatcher GetDispatcher()
-            {
-                return this.streamSource;
-            }
-
             private bool isRendering;
-            private int streamId;
+            private Int32 streamId;
             private MediaStreamer mediastreamer;
             private VideoStreamSource streamSource;
         }
