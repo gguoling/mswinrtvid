@@ -27,8 +27,11 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "mswp8cap.h"
 #include "mswp8dis.h"
+#include "IVideoRenderer.h"
+
 
 using namespace mswp8vid;
+using namespace Mediastreamer2::WP8Video;
 
 
 /******************************************************************************
@@ -274,9 +277,29 @@ static int ms_wp8dis_support_decoding(MSFilter *f, void *arg) {
 	return 0;
 }
 
+template <class T> class RefToPtrProxy
+{
+public:
+	RefToPtrProxy(T obj) : mObj(obj) {}
+	~RefToPtrProxy() { mObj = nullptr; }
+	T Ref() { return mObj; }
+private:
+	T mObj;
+};
+
+static int ms_wp8dis_set_native_window_id(MSFilter *f, void *arg) {
+	MSWP8Dis *w = static_cast<MSWP8Dis *>(f->data);
+	unsigned long *ptr = (unsigned long *)arg;
+	RefToPtrProxy<IVideoRenderer^> *proxy = reinterpret_cast< RefToPtrProxy<IVideoRenderer^> *>(*ptr);
+	IVideoRenderer^ renderer = (proxy) ? proxy->Ref() : nullptr;
+	w->setVideoRenderer(renderer);
+	return 0;
+}
+
 static MSFilterMethod ms_wp8dis_methods[] = {
-	{	MS_VIDEO_DISPLAY_SUPPORT_DECODING,	ms_wp8dis_support_decoding	},
-	{	0,									NULL						}
+	{	MS_VIDEO_DISPLAY_SUPPORT_DECODING,		ms_wp8dis_support_decoding		},
+	{	MS_VIDEO_DISPLAY_SET_NATIVE_WINDOW_ID,	ms_wp8dis_set_native_window_id	},
+	{	0,										NULL							}
 };
 
 

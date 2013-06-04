@@ -25,9 +25,11 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "mediastreamer2/msticker.h"
 #include "mediastreamer2/msvideo.h"
 #include "mswp8dis.h"
+#include "VideoBuffer.h"
 
 using namespace Microsoft::WRL;
 using namespace mswp8vid;
+using namespace Mediastreamer2::WP8Video;
 
 
 
@@ -68,7 +70,7 @@ bool MSWP8Dis::smInstantiated = false;
 
 MSWP8Dis::MSWP8Dis()
 	: mIsInitialized(false), mIsActivated(false), mIsStarted(false), mWidth(MS_VIDEO_SIZE_CIF_W), mHeight(MS_VIDEO_SIZE_CIF_H),
-	mRfc3984Unpacker(nullptr), mBitstreamSize(65536), mSPS(nullptr), mPPS(nullptr)
+	mRfc3984Unpacker(nullptr), mBitstreamSize(65536), mSPS(nullptr), mPPS(nullptr), mRenderer(nullptr)
 {
 	if (smInstantiated) {
 		ms_error("[MSWP8Dis] A video display filter is already instantiated. A second one can not be created.");
@@ -111,7 +113,9 @@ void MSWP8Dis::start()
 	if (!mIsStarted && mIsActivated) {
 		mIsStarted = true;
 		Platform::String^ format = ref new Platform::String(L"H264");
-		Globals::Instance->startRendering(format, mWidth, mHeight);
+		if (mRenderer != nullptr) {
+			mRenderer->Start(format, mWidth, mHeight);
+		}
 	}
 }
 
@@ -119,7 +123,9 @@ void MSWP8Dis::stop()
 {
 	if (mIsStarted) {
 		mIsStarted = false;
-		Globals::Instance->stopRendering();
+		if (mRenderer != nullptr) {
+			mRenderer->Stop();
+		}
 	}
 }
 
@@ -137,16 +143,28 @@ int MSWP8Dis::feed(MSFilter *f)
 				int size = nalusToFrame(&nalus, &need_reinit);
 				if (need_reinit) {
 					Platform::String^ format = ref new Platform::String(L"H264");
-					Globals::Instance->changeRenderingFormat(format, mWidth, mHeight);
+					if (mRenderer != nullptr) {
+						mRenderer->ChangeFormat(format, mWidth, mHeight);
+					}
 				}
-				if (size > 0) {
-					Globals::Instance->VideoSampleDispatcher->writeSample(mBitstream, size, f->ticker->time * 10000LL);
+				if ((size > 0) && (mRenderer != nullptr)) {
+					IVideoDispatcher^ dispatcher = mRenderer->GetDispatcher();
+					if (dispatcher != nullptr) {
+						ComPtr<VideoBuffer> spVideoBuffer = NULL;
+						MakeAndInitialize<VideoBuffer>(&spVideoBuffer, (BYTE *)mBitstream, size);
+						dispatcher->OnSampleReceived(VideoBuffer::GetIBuffer(spVideoBuffer), f->ticker->time * 10000LL);
+					}
 				}
 			}
 		}
 	}
 
 	return 0;
+}
+
+void MSWP8Dis::setVideoRenderer(IVideoRenderer^ renderer)
+{
+	mRenderer = renderer;
 }
 
 int MSWP8Dis::nalusToFrame(MSQueue *nalus, bool *new_sps_pps)
@@ -318,66 +336,4 @@ void MSWP8Dis::updateVideoSizeFromSPS()
  	mHeight = (pic_height_in_map_units_minus1 + 1) * 16;
 	ms_message("Change video size from SPS: %ux%u", mWidth, mHeight);
 	MS_UNUSED(dummy);
-}
-
-
-
-DisplayEventDispatcher::DisplayEventDispatcher()
-{
-}
-
-DisplayEventDispatcher::~DisplayEventDispatcher()
-{
-}
-
-void DisplayEventDispatcher::writeSample(BYTE* bytes, int byteCount, UINT64 hnsPresentationTime)
-{
-	ComPtr<NativeBuffer> spNativeBuffer = NULL;
-	BYTE* pBuf = new BYTE[byteCount];
-
-	memcpy((void*)pBuf, (void*)bytes, byteCount);
-	MakeAndInitialize<NativeBuffer>(&spNativeBuffer, pBuf, byteCount, TRUE);
-	sampleReceived(NativeBuffer::GetIBufferFromNativeBuffer(spNativeBuffer), hnsPresentationTime);
-}
-
-
-
-Globals^ Globals::singleton = nullptr;
-
-Globals::Globals()
-	: videoSampleDispatcher(ref new DisplayEventDispatcher())
-{
-}
-
-Globals::~Globals()
-{
-}
-
-Globals^ Globals::Instance::get()
-{
-	if (Globals::singleton == nullptr) {
-		Globals::singleton = ref new Globals();
-	}
-
-	return Globals::singleton;
-}
-
-DisplayEventDispatcher^ Globals::VideoSampleDispatcher::get()
-{
-	return this->videoSampleDispatcher;
-}
-
-void Globals::startRendering(Platform::String^ format, int width, int height)
-{
-	renderStarted(format, width, height);
-}
-
-void Globals::stopRendering()
-{
-	renderStopped();
-}
-
-void Globals::changeRenderingFormat(Platform::String^ format, int width, int height)
-{
-	renderFormatChanged(format, width, height);
 }

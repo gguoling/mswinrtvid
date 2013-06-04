@@ -31,159 +31,44 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "mediastreamer2/msfilter.h"
 #include "mediastreamer2/rfc3984.h"
 
+#include "IVideoRenderer.h"
+
 
 namespace mswp8vid
 {
-		public delegate void SampleReceivedEventHandler(Windows::Storage::Streams::IBuffer ^pBuffer, UINT64 hnsPresentationTime);
+	class MSWP8Dis {
+	public:
+		MSWP8Dis();
+		virtual ~MSWP8Dis();
 
-		public ref class DisplayEventDispatcher sealed {
-		public:
-			DisplayEventDispatcher();
-			virtual ~DisplayEventDispatcher();
+		int activate();
+		int deactivate();
+		bool isStarted() { return mIsStarted; }
+		void start();
+		void stop();
+		int feed(MSFilter *f);
+		void setVideoRenderer(Mediastreamer2::WP8Video::IVideoRenderer^ renderer);
 
-			void writeSample(BYTE* bytes, int byteCount, UINT64 hnsPresentationTime);
+	private:
+		int nalusToFrame(MSQueue *nalus, bool *new_sps_pps);
+		void enlargeBitstream(int newSize);
+		bool checkSPSChange(mblk_t *sps);
+		bool checkPPSChange(mblk_t *pps);
+		void updateSPS(mblk_t *sps);
+		void updatePPS(mblk_t *pps);
+		void updateVideoSizeFromSPS();
 
-			event SampleReceivedEventHandler^ sampleReceived;
-		};
-
-		/// <summary>
-		/// The purpose of this class is to transform byte buffers into an IBuffer
-		/// </summary>
-		class NativeBuffer : public Microsoft::WRL::RuntimeClass<
-								Microsoft::WRL::RuntimeClassFlags< Microsoft::WRL::RuntimeClassType::WinRtClassicComMix >,
-								ABI::Windows::Storage::Streams::IBuffer,
-								Windows::Storage::Streams::IBufferByteAccess,
-								Microsoft::WRL::FtmBase>
-		{
-		public:
-			virtual ~NativeBuffer() {
-				if (m_pBuffer && m_bIsOwner) {
-					delete[] m_pBuffer;
-					m_pBuffer = NULL;
-				}
-			}
-
-			STDMETHODIMP RuntimeClassInitialize(BYTE* pBuffer, UINT totalSize, BOOL fTakeOwnershipOfPassedInBuffer) {
-				m_uLength = totalSize;
-				m_uFullSize = totalSize;
-				m_pBuffer = pBuffer;
-				m_bIsOwner = fTakeOwnershipOfPassedInBuffer;
-				return S_OK;
-			}
-
-			STDMETHODIMP Buffer(BYTE **value) {
-				*value = m_pBuffer;
-				return S_OK;
-			}
-
-			STDMETHODIMP get_Capacity(UINT32 *value) {
-				*value = m_uFullSize;
-				return S_OK;
-			}
-
-			STDMETHODIMP get_Length(UINT32 *value) {
-				*value = m_uLength;
-				return S_OK;
-			}
-
-			STDMETHODIMP put_Length(UINT32 value) {
-				if(value > m_uFullSize) {
-					return E_INVALIDARG;
-				}
-				m_uLength = value;
-				return S_OK;
-			}
-
-			static Windows::Storage::Streams::IBuffer^ GetIBufferFromNativeBuffer(Microsoft::WRL::ComPtr<NativeBuffer> spNativeBuffer) {
-				auto iinspectable = reinterpret_cast<IInspectable*>(spNativeBuffer.Get());
-				return reinterpret_cast<Windows::Storage::Streams::IBuffer^>(iinspectable);
-			}
-
-			static BYTE* GetBytesFromIBuffer(Windows::Storage::Streams::IBuffer^ buffer) {
-				auto iinspectable = (IInspectable*)reinterpret_cast<IInspectable*>(buffer);
-				Microsoft::WRL::ComPtr<Windows::Storage::Streams::IBufferByteAccess> spBuffAccess;
-				HRESULT hr = iinspectable->QueryInterface(__uuidof(Windows::Storage::Streams::IBufferByteAccess), (void **)&spBuffAccess);
-				if (hr == S_OK) {
-					UCHAR * pReadBuffer;
-					spBuffAccess->Buffer(&pReadBuffer);
-					return pReadBuffer;
-				}
-				return nullptr;
-			}
-
-		private:
-			UINT32 m_uLength;
-			UINT32 m_uFullSize;
-			BYTE* m_pBuffer;
-			BOOL m_bIsOwner;
-		};
-
-		public delegate void RenderStarted(Platform::String^ format, int width, int height);
-		public delegate void RenderStopped();
-		public delegate void RenderFormatChanged(Platform::String^ format, int width, int height);
-
-		public ref class Globals sealed
-		{
-		public:
-			// Get the single instance of this class
-			static property Globals^ Instance
-			{
-				Globals^ get();
-			}
-
-			// The singleton display event dispatcher object.
-			property DisplayEventDispatcher^ VideoSampleDispatcher
-			{
-				DisplayEventDispatcher^ get();
-			}
-
-			event RenderStarted^ renderStarted;
-			event RenderStopped^ renderStopped;
-			event RenderFormatChanged^ renderFormatChanged;
-
-			void startRendering(Platform::String^ format, int width, int height);
-			void stopRendering();
-			void changeRenderingFormat(Platform::String^ format, int width, int height);
-
-		private:
-			Globals();
-			~Globals();
-
-			static Globals^ singleton;	// The single instance of this class
-			DisplayEventDispatcher^ videoSampleDispatcher;
-		};
-
-		class MSWP8Dis {
-		public:
-			MSWP8Dis();
-			virtual ~MSWP8Dis();
-
-			int activate();
-			int deactivate();
-			bool isStarted() { return mIsStarted; }
-			void start();
-			void stop();
-			int feed(MSFilter *f);
-
-		private:
-			int nalusToFrame(MSQueue *nalus, bool *new_sps_pps);
-			void enlargeBitstream(int newSize);
-			bool checkSPSChange(mblk_t *sps);
-			bool checkPPSChange(mblk_t *pps);
-			void updateSPS(mblk_t *sps);
-			void updatePPS(mblk_t *pps);
-			void updateVideoSizeFromSPS();
-
-			static bool smInstantiated;
-			bool mIsInitialized;
-			bool mIsActivated;
-			bool mIsStarted;
-			int mWidth;
-			int mHeight;
-			Rfc3984Context *mRfc3984Unpacker;
-			int mBitstreamSize;
-			uint8_t *mBitstream;
-			mblk_t *mSPS;
-			mblk_t *mPPS;
-		};
+		static bool smInstantiated;
+		bool mIsInitialized;
+		bool mIsActivated;
+		bool mIsStarted;
+		int mWidth;
+		int mHeight;
+		Rfc3984Context *mRfc3984Unpacker;
+		int mBitstreamSize;
+		uint8_t *mBitstream;
+		mblk_t *mSPS;
+		mblk_t *mPPS;
+		Mediastreamer2::WP8Video::IVideoRenderer^ mRenderer;
+	};
 }
