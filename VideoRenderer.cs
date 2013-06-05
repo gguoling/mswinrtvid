@@ -2,6 +2,7 @@ using Microsoft.Phone.Media;
 using System;
 using System.Diagnostics;
 using System.Windows;
+using Windows.Phone.Media.Capture;
 
 using Mediastreamer2.WP8Video;
 
@@ -11,11 +12,17 @@ namespace Mediastreamer2
     {
         public class VideoRenderer : IVideoRenderer
         {
+            /// <summary>
+            /// Public constructor.
+            /// </summary>
             public VideoRenderer()
             {
                 this.streamId = GetHashCode();
             }
 
+            /// <summary>
+            /// Gets the video sample dispatcher.
+            /// </summary>
             public IVideoDispatcher Dispatcher
             {
                 get
@@ -24,13 +31,35 @@ namespace Mediastreamer2
                 }
             }
 
+            /// <summary>
+            /// Gets an Uri from a stream id.
+            /// </summary>
+            /// <param name="streamId">The id of the stream to get an Uri for</param>
+            /// <returns>The Uri corresponding to the stream id</returns>
             public static Uri StreamUri(Int32 streamId)
             {
                 return new Uri("ms-media-stream-id:MediaStreamer-" + streamId);
             }
 
-            public static Uri FrontFacingCameraStreamUri = new Uri("ms-media-stream-id:camera-FrontFacing");
-            public static Uri RearFacingCameraStreamUri = new Uri("ms-media-stream-id:camera-RearFacing");
+            /// <summary>
+            /// Gets an Uri from a camera device name.
+            /// </summary>
+            /// <param name="device">The name of the camera device to get an Uri for</param>
+            /// <returns>The Uri corresponding to the camera device</returns>
+            public static Uri CameraUri(String device)
+            {
+                if (device.EndsWith(CameraSensorLocation.Front.ToString()))
+                {
+                    return VideoRenderer.FrontFacingCameraStreamUri;
+                }
+                else if (device.EndsWith(CameraSensorLocation.Back.ToString()))
+                {
+                    return VideoRenderer.RearFacingCameraStreamUri;
+                }
+                return new Uri("");
+            }
+
+            #region Implementation of the IVideoRenderer interface
 
             public int GetNativeWindowId()
             {
@@ -91,6 +120,11 @@ namespace Mediastreamer2
                     }
                 });
             }
+
+            #endregion
+
+            public static Uri FrontFacingCameraStreamUri = new Uri("ms-media-stream-id:camera-FrontFacing");
+            public static Uri RearFacingCameraStreamUri = new Uri("ms-media-stream-id:camera-RearFacing");
 
             private bool isRendering;
             private Int32 streamId;
