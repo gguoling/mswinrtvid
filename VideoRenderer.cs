@@ -59,6 +59,24 @@ namespace Mediastreamer2
                 return new Uri("");
             }
 
+            /// <summary>
+            /// Tells whether a camera display is to be mirrored.
+            /// </summary>
+            /// <param name="device">The name of the camera device</param>
+            /// <returns>true if the camera display should be mirrored, false otherwise</returns>
+            public static Boolean IsCameraMirrored(String device)
+            {
+                if (device.EndsWith(CameraSensorLocation.Front.ToString()))
+                {
+                    return true;
+                }
+                else if (device.EndsWith(CameraSensorLocation.Back.ToString()))
+                {
+                    return false;
+                }
+                return false;
+            }
+
             #region Implementation of the IVideoRenderer interface
 
             public int GetNativeWindowId()
