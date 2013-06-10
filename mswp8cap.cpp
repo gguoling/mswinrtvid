@@ -42,7 +42,7 @@ bool MSWP8Cap::smInstantiated = false;
 MSWP8Cap::MSWP8Cap()
 	: mIsInitialized(false), mIsActivated(false), mIsStarted(false),
 	mRfc3984Packer(nullptr), mPackerMode(1), mStartTime(0), mSamplesCount(0), mFps(defaultFps), mBitrate(defaultBitrate),
-	mCameraLocation(CameraSensorLocation::Front),
+	mCameraSensorRotation(-1), mCameraLocation(CameraSensorLocation::Front),
 	mDimensions(MS_VIDEO_SIZE_CIF_W, MS_VIDEO_SIZE_CIF_H),
 	mVideoDevice(nullptr)
 {
@@ -410,6 +410,7 @@ void MSWP8Cap::configure()
 	Collections::IIterator<Platform::Object^> ^valuesIterator;
 
 	// Configure the sensor rotation for the capture
+	mCameraSensorRotation = (int)mVideoDevice->SensorRotationInDegrees;
 	if (mCameraLocation == CameraSensorLocation::Front) {
 		uint32 rotation = 360 - mVideoDevice->SensorRotationInDegrees;
 		boxedSensorRotation = (rotation == 360) ? 0 : rotation;

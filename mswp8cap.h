@@ -72,6 +72,7 @@ namespace mswp8vid
 			void setBitrate(int bitrate);
 			MSVideoSize getVideoSize();
 			void setVideoSize(MSVideoSize vs);
+			int getCameraSensorRotation() { return mCameraSensorRotation; }
 			void requestIdrFrame();
 
 			static void detectCameras(MSWebCamManager *manager, MSWebCamDesc *desc);
@@ -94,6 +95,7 @@ namespace mswp8vid
 			int mSamplesCount;
 			float mFps;
 			int mBitrate;
+			int mCameraSensorRotation;
 			VideoStarter starter;
 			HANDLE mStartCompleted;
 			HANDLE mStopCompleted;
