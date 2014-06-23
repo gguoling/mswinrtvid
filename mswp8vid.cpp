@@ -276,7 +276,7 @@ static void ms_wp8dis_uninit(MSFilter *f) {
  * Methods to configure the Windows Phone 8 video display filter              *
  *****************************************************************************/
 
-static int ms_wp8dis_support_decoding(MSFilter *f, void *arg) {
+static int ms_wp8dis_support_rendering(MSFilter *f, void *arg) {
 	MS_UNUSED(f);
 	MSVideoDisplayDecodingSupport *decoding_support = static_cast<MSVideoDisplayDecodingSupport *>(arg);
 	if (strcmp(decoding_support->mime_type, "H264") == 0) decoding_support->supported = TRUE;
@@ -310,7 +310,7 @@ static int ms_wp8dis_set_native_window_id(MSFilter *f, void *arg) {
 }
 
 static MSFilterMethod ms_wp8dis_methods[] = {
-	{	MS_VIDEO_DISPLAY_SUPPORT_DECODING,		ms_wp8dis_support_decoding		},
+	{	MS_VIDEO_DECODER_SUPPORT_RENDERING,		ms_wp8dis_support_rendering		},
 	{	MS_VIDEO_DISPLAY_GET_NATIVE_WINDOW_ID,	ms_wp8dis_get_native_window_id	},
 	{	MS_VIDEO_DISPLAY_SET_NATIVE_WINDOW_ID,	ms_wp8dis_set_native_window_id	},
 	{	0,										NULL							}
@@ -324,7 +324,7 @@ static MSFilterMethod ms_wp8dis_methods[] = {
 #define MS_WP8DIS_ID			MS_FILTER_PLUGIN_ID
 #define MS_WP8DIS_NAME			"MSWP8Dis"
 #define MS_WP8DIS_DESCRIPTION	"Windows Phone 8 video display"
-#define MS_WP8DIS_CATEGORY		MS_FILTER_DECODING_RENDERER
+#define MS_WP8DIS_CATEGORY		MS_FILTER_DECODER_RENDERER
 #define MS_WP8DIS_ENC_FMT		"H264"
 #define MS_WP8DIS_NINPUTS		1
 #define MS_WP8DIS_NOUTPUTS		0
