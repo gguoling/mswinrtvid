@@ -156,6 +156,14 @@ int MSWP8Dis::feed(MSFilter *f)
 				}
 			}
 		}
+	} else {
+		if (f->inputs[0] != NULL) {
+			ms_queue_flush(f->inputs[0]);
+		}
+	}
+
+	if (f->inputs[1] != NULL) {
+		ms_queue_flush(f->inputs[1]);
 	}
 
 	return 0;

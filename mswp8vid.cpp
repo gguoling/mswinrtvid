@@ -326,7 +326,7 @@ static MSFilterMethod ms_wp8dis_methods[] = {
 #define MS_WP8DIS_DESCRIPTION	"Windows Phone 8 video display"
 #define MS_WP8DIS_CATEGORY		MS_FILTER_DECODER_RENDERER
 #define MS_WP8DIS_ENC_FMT		"H264"
-#define MS_WP8DIS_NINPUTS		1
+#define MS_WP8DIS_NINPUTS		2
 #define MS_WP8DIS_NOUTPUTS		0
 #define MS_WP8DIS_FLAGS			0
 
