@@ -17,7 +17,6 @@ namespace Mediastreamer2
             /// </summary>
             public VideoRenderer()
             {
-                this.streamId = GetHashCode();
             }
 
             /// <summary>
@@ -81,7 +80,7 @@ namespace Mediastreamer2
 
             public int GetNativeWindowId()
             {
-                return this.streamId;
+                return GetHashCode();
             }
 
             public void Start(String format, int width, int height)
@@ -97,7 +96,7 @@ namespace Mediastreamer2
                     {
                         if (this.mediastreamer == null)
                         {
-                            this.mediastreamer = MediaStreamerFactory.CreateMediaStreamer(this.streamId);
+                            this.mediastreamer = MediaStreamerFactory.CreateMediaStreamer(GetHashCode());
                         }
                         this.streamSource = new VideoStreamSource(format, width, height);
                         this.mediastreamer.SetSource(this.streamSource);
@@ -145,7 +144,6 @@ namespace Mediastreamer2
             public static Uri RearFacingCameraStreamUri = new Uri("ms-media-stream-id:camera-RearFacing");
 
             private bool isRendering;
-            private Int32 streamId;
             private MediaStreamer mediastreamer;
             private VideoStreamSource streamSource;
         }
