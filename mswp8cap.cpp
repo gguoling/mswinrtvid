@@ -42,7 +42,7 @@ bool MSWP8Cap::smInstantiated = false;
 MSWP8Cap::MSWP8Cap()
 	: mIsInitialized(false), mIsActivated(false), mIsStarted(false),
 	mRfc3984Packer(nullptr), mPackerMode(1), mStartTime(0), mSamplesCount(0), mFps(defaultFps), mBitrate(defaultBitrate),
-	mCameraSensorRotation(-1), mCameraLocation(CameraSensorLocation::Front),
+	mCameraSensorRotation(-1), mDeviceOrientation(0), mCameraLocation(CameraSensorLocation::Front),
 	mDimensions(MS_VIDEO_SIZE_CIF_W, MS_VIDEO_SIZE_CIF_H),
 	mVideoDevice(nullptr)
 {
@@ -94,7 +94,7 @@ int MSWP8Cap::activate()
 		if (status == Windows::Foundation::AsyncStatus::Completed) {
 			IAudioVideoCaptureDeviceNative *pNativeDevice = nullptr; 
 
-			ms_debug("[MSWP8Cap] OpenAsyncOperation completed");
+			ms_message("[MSWP8Cap] OpenAsyncOperation completed");
 			mVideoDevice = operation->GetResults();
 			HRESULT hr = reinterpret_cast<IUnknown*>(mVideoDevice)->QueryInterface(__uuidof(IAudioVideoCaptureDeviceNative), (void**) &pNativeDevice);
 			if ((pNativeDevice == nullptr) || FAILED(hr)) {
@@ -127,6 +127,14 @@ int MSWP8Cap::deactivate()
 		rfc3984_destroy(mRfc3984Packer);
 		mRfc3984Packer = nullptr;
 	}
+	if (mNativeVideoDevice) {
+		mNativeVideoDevice->Release();
+		mNativeVideoDevice = nullptr;
+	}
+	if (mVideoSink) {
+		mVideoSink->Release();
+		mVideoSink = nullptr;
+	}
 	mIsActivated = false;
 	return 0;
 }
@@ -138,9 +146,8 @@ void MSWP8Cap::start()
 	if (!mIsStarted && mIsActivated) {
 		waitResult = WaitForSingleObjectEx(mStartCompleted, 0, FALSE);
 		if (waitResult == WAIT_OBJECT_0) {
-			mIsStarted = true;
-			mVideoCaptureAction = mVideoDevice->StartRecordingToSinkAsync();
-			mVideoCaptureAction->Completed = ref new AsyncActionCompletedHandler([this] (IAsyncAction ^asyncInfo, Windows::Foundation::AsyncStatus status) {
+			Windows::Foundation::IAsyncAction^ startRecordingAction = mVideoDevice->StartRecordingToSinkAsync();
+			startRecordingAction->Completed = ref new AsyncActionCompletedHandler([this] (IAsyncAction ^asyncInfo, Windows::Foundation::AsyncStatus status) {
 				if (status == Windows::Foundation::AsyncStatus::Completed) {
 					ms_message("[MSWP8Cap] StartRecordingToSinkAsync completed");
 				}
@@ -148,6 +155,8 @@ void MSWP8Cap::start()
 					ms_error("[MSWP8Cap] StartRecordingToSinkAsync did not complete");
 				}
 			});
+			ResetEvent(mStartCompleted);
+			mIsStarted = true;
 		}
 	}
 }
@@ -160,13 +169,13 @@ void MSWP8Cap::stop()
 
 	if (mVideoDevice) {
 		try {
-			mVideoDevice->StopRecordingAsync()->Completed = ref new AsyncActionCompletedHandler([this] (IAsyncAction ^action, Windows::Foundation::AsyncStatus status) {
+			Windows::Foundation::IAsyncAction^ stopRecordingAction = mVideoDevice->StopRecordingAsync();
+			stopRecordingAction->Completed = ref new AsyncActionCompletedHandler([this] (IAsyncAction ^action, Windows::Foundation::AsyncStatus status) {
 				if (status == Windows::Foundation::AsyncStatus::Completed) {
 					ms_message("[MSWP8Cap] Video successfully stopped");
 				} else {
 					ms_error("[MSWP8Cap] Error while stopping recording");
 				}
-				mVideoCaptureAction = nullptr;
 				mVideoDevice = nullptr;
 				mIsStarted = false;
 				SetEvent(mStopCompleted);
@@ -175,21 +184,13 @@ void MSWP8Cap::stop()
 			// A Platform::ObjectDisposedException can be raised if the app has had its access
 			// to video revoked (most commonly when the app is going out of the foreground)
 			ms_warning("[MSWP8Cap] Exception caught while destroying video capture");
-			mVideoCaptureAction = nullptr;
 			mVideoDevice = nullptr;
 			mIsStarted = false;
 			SetEvent(mStopCompleted);
 		}
 
-		if (mNativeVideoDevice) {
-			mNativeVideoDevice->Release();
-			mNativeVideoDevice = nullptr;
-		}
-
-		if (mVideoSink) {
-			mVideoSink->Release();
-			mVideoSink = nullptr;
-		}
+		WaitForSingleObjectEx(mStopCompleted, 3000, FALSE);
+		ResetEvent(mStopCompleted);
 	}
 
 	ms_mutex_lock(&mMutex);
@@ -319,6 +320,11 @@ void MSWP8Cap::setVideoSize(MSVideoSize vs)
 	}
 }
 
+void MSWP8Cap::setDeviceOrientation(int degrees)
+{
+	mDeviceOrientation = degrees;
+}
+
 void MSWP8Cap::requestIdrFrame()
 {
 	if (mIsStarted) {
@@ -412,12 +418,13 @@ void MSWP8Cap::configure()
 	// Configure the sensor rotation for the capture
 	mCameraSensorRotation = (int)mVideoDevice->SensorRotationInDegrees;
 	if (mCameraLocation == CameraSensorLocation::Front) {
-		uint32 rotation = 360 - mVideoDevice->SensorRotationInDegrees;
-		boxedSensorRotation = (rotation == 360) ? 0 : rotation;
+		uint32 rotation = 360 - mVideoDevice->SensorRotationInDegrees + mDeviceOrientation;
+		boxedSensorRotation = rotation % 360;
 	} else if (mCameraLocation == CameraSensorLocation::Back) {
-		boxedSensorRotation = mVideoDevice->SensorRotationInDegrees;
+		uint32 rotation = mVideoDevice->SensorRotationInDegrees + mDeviceOrientation;
+		boxedSensorRotation = rotation % 360;
 	} else {
-		uint32 rotation = 0;
+		uint32 rotation = mDeviceOrientation;
 		boxedSensorRotation = rotation;
 	}
 	mVideoDevice->SetProperty(KnownCameraGeneralProperties::EncodeWithOrientation, boxedSensorRotation);

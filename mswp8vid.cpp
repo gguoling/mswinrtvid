@@ -130,6 +130,12 @@ static int ms_wp8cap_get_camera_sensor_rotation(MSFilter *f, void *arg) {
 	return 0;
 }
 
+static int ms_wp8cap_set_device_orientation(MSFilter *f, void *arg) {
+	MSWP8Cap *r = static_cast<MSWP8Cap *>(f->data);
+	r->setDeviceOrientation(*((int *)arg));
+	return 0;
+}
+
 static MSFilterMethod ms_wp8cap_read_methods[] = {
 	{	MS_FILTER_GET_FPS,			ms_wp8cap_get_fps		},
 	{	MS_FILTER_SET_FPS,			ms_wp8cap_set_fps		},
@@ -141,6 +147,7 @@ static MSFilterMethod ms_wp8cap_read_methods[] = {
 	{	MS_FILTER_REQ_VFU,			ms_wp8cap_req_vfu		},
 	{	MS_VIDEO_ENCODER_REQ_VFU,	ms_wp8cap_req_vfu		},
 	{	MS_VIDEO_CAPTURE_GET_CAMERA_SENSOR_ROTATION,	ms_wp8cap_get_camera_sensor_rotation	},
+	{	MS_VIDEO_CAPTURE_SET_DEVICE_ORIENTATION,	ms_wp8cap_set_device_orientation	},
 	{	0,							NULL					}
 };
 

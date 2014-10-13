@@ -73,6 +73,7 @@ namespace mswp8vid
 			MSVideoSize getVideoSize();
 			void setVideoSize(MSVideoSize vs);
 			int getCameraSensorRotation() { return mCameraSensorRotation; }
+			void setDeviceOrientation(int degrees);
 			void requestIdrFrame();
 
 			static void detectCameras(MSWebCamManager *manager, MSWebCamDesc *desc);
@@ -96,6 +97,7 @@ namespace mswp8vid
 			float mFps;
 			int mBitrate;
 			int mCameraSensorRotation;
+			int mDeviceOrientation;
 			VideoStarter starter;
 			HANDLE mStartCompleted;
 			HANDLE mStopCompleted;
@@ -104,7 +106,6 @@ namespace mswp8vid
 			Windows::Phone::Media::Capture::AudioVideoCaptureDevice^ mVideoDevice;
 			SampleSink *mVideoSink;
 			IAudioVideoCaptureDeviceNative* mNativeVideoDevice;
-			Windows::Foundation::IAsyncAction^ mVideoCaptureAction;
 		};
 
 		class SampleSink
