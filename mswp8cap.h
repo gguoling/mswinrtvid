@@ -31,6 +31,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "mediastreamer2/msfilter.h"
 #include "mediastreamer2/mswebcam.h"
 #include "mediastreamer2/rfc3984.h"
+#include "mediastreamer2/videostarter.h"
 
 
 namespace mswp8vid
@@ -99,7 +100,7 @@ namespace mswp8vid
 			int mBitrate;
 			int mCameraSensorRotation;
 			int mDeviceOrientation;
-			VideoStarter starter;
+			MSVideoStarter mStarter;
 			HANDLE mStartCompleted;
 			HANDLE mStopCompleted;
 			Windows::Phone::Media::Capture::CameraSensorLocation mCameraLocation;

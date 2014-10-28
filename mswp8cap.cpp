@@ -88,6 +88,7 @@ int MSWP8Cap::activate()
 	mRfc3984Packer = rfc3984_new();
 	rfc3984_set_mode(mRfc3984Packer, mPackerMode);
 	rfc3984_enable_stap_a(mRfc3984Packer, FALSE);
+	ms_video_starter_init(&mStarter);
 
 	openOperation = AudioVideoCaptureDevice::OpenForVideoOnlyAsync(mCameraLocation, mDimensions);
 	openOperation->Completed = ref new AsyncOperationCompletedHandler<AudioVideoCaptureDevice^>([this] (IAsyncOperation<AudioVideoCaptureDevice^> ^operation, Windows::Foundation::AsyncStatus status) {
@@ -230,10 +231,10 @@ int MSWP8Cap::feed(MSFilter *f)
 		rfc3984_pack(mRfc3984Packer, &nalus, f->outputs[0], timestamp);
 		ms_queue_put(&mSampleToFreeQueue, m);
 
+		
 		if (mSamplesCount == 0) {
-			starter.FirstIdrFrame(f->ticker->time);
-		} else if (starter.IdrFrameNeeded(f->ticker->time)) {
-			// Send I frame 2 seconds and 4 seconds after the beginning
+			ms_video_starter_first_frame(&mStarter, f->ticker->ticks);
+		} else if (ms_video_starter_need_i_frame(&mStarter, f->ticker->time)) {
 			requestIdrFrame();
 		}
 		mSamplesCount++;
@@ -569,35 +570,4 @@ void MSWP8Cap::printProperties()
 	ms_message("[MSWP8Cap] VideoTorchPower range: %u-%u", safe_cast<uint32>(range->Min), safe_cast<uint32>(range->Max));
 	uint32 power = safe_cast<uint32>(mVideoDevice->GetProperty(KnownCameraAudioVideoProperties::VideoTorchPower));
 	ms_message("[MSWP8Cap] VideoTorchPower value: %u", power);
-}
-
-
-
-VideoStarter::VideoStarter()
-	: mNextTime(0), mIdrFrameCount(0)
-{
-}
-
-VideoStarter::~VideoStarter()
-{
-}
-
-void VideoStarter::FirstIdrFrame(uint64_t curtime)
-{
-	mNextTime = curtime + 2000;
-}
-
-bool VideoStarter::IdrFrameNeeded(uint64_t curtime)
-{
-	if (mNextTime == 0) return false;
-	if (curtime >= mNextTime) {
-		mIdrFrameCount++;
-		if (mIdrFrameCount == 1) {
-			mNextTime += 2000;
-		} else {
-			mNextTime = 0;
-		}
-		return true;
-	}
-	return false;
 }
