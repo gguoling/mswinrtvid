@@ -50,16 +50,14 @@ namespace Mediastreamer2
             #region Implementation of the MediaStreamSource interface
             protected override void OpenMediaAsync()
             {
-                CreateMediaDescription();
-
-                // Create attributes telling that we want an infinite video in which we can't seek
-                Dictionary<MediaSourceAttributesKeys, string> sourceAttributes = new Dictionary<MediaSourceAttributesKeys, string>();
-                sourceAttributes[MediaSourceAttributesKeys.Duration] = TimeSpan.FromSeconds(0).Ticks.ToString(CultureInfo.InvariantCulture);
-                sourceAttributes[MediaSourceAttributesKeys.CanSeek] = false.ToString();
-
-                List<MediaStreamDescription> streams = new List<MediaStreamDescription>();
-                streams.Add(this.streamDesc);
-                ReportOpenMediaCompleted(sourceAttributes, streams);
+                lock(lockObj)
+                {
+                    // Create attributes telling that we want an infinite video in which we can't seek
+                    this.sourceAttributes = new Dictionary<MediaSourceAttributesKeys, string>();
+                    this.sourceAttributes[MediaSourceAttributesKeys.Duration] = TimeSpan.FromSeconds(0).Ticks.ToString(CultureInfo.InvariantCulture);
+                    this.sourceAttributes[MediaSourceAttributesKeys.CanSeek] = false.ToString();
+                    this.openAsyncPending = true;
+                }
             }
 
             protected override void GetSampleAsync(MediaStreamType mediaStreamType)
@@ -121,6 +119,11 @@ namespace Mediastreamer2
             {
                 lock (lockObj)
                 {
+                    if (this.openAsyncPending)
+                    {
+                        ReportOpenAsyncCompleted();
+                    }
+
                     if (this.sampleQueue.Count >= VideoStreamSource.maxSampleQueueSize)
                     {
                         // The sample queue is full, discard the older sample
@@ -130,6 +133,15 @@ namespace Mediastreamer2
                     this.sampleQueue.Enqueue(new Sample(pBuffer, hnsPresentationTime));
                     FeedSamples();
                 }
+            }
+
+            private void ReportOpenAsyncCompleted()
+            {
+                CreateMediaDescription();
+                List<MediaStreamDescription> streams = new List<MediaStreamDescription>();
+                streams.Add(this.streamDesc);
+                ReportOpenMediaCompleted(sourceAttributes, streams);
+                this.openAsyncPending = false;
             }
 
             private void CreateMediaDescription()
@@ -150,7 +162,10 @@ namespace Mediastreamer2
                         Sample sample = this.sampleQueue.Dequeue();
                         Stream s = System.Runtime.InteropServices.WindowsRuntime.WindowsRuntimeBufferExtensions.AsStream(sample.buffer);
 
-                        MediaStreamSample msSample = new MediaStreamSample(this.streamDesc, s, 0, s.Length, (long)sample.presentationTime, this.emptyAttributes);
+                        /*Dictionary<MediaSampleAttributeKeys, string> sampleAttributes = new Dictionary<MediaSampleAttributeKeys, string>();
+                        sampleAttributes[MediaSampleAttributeKeys.FrameWidth] = this.frameWidth.ToString();
+                        sampleAttributes[MediaSampleAttributeKeys.FrameHeight] = this.frameHeight.ToString();*/
+                        MediaStreamSample msSample = new MediaStreamSample(this.streamDesc, s, 0, s.Length, (long)sample.presentationTime, this.emptyAttributes/*sampleAttributes*/);
                         ReportGetSampleCompleted(msSample);
                         this.outstandingSamplesCount--;
                     }
@@ -161,6 +176,7 @@ namespace Mediastreamer2
             private const int maxSampleQueueSize = 4;
 
             private bool isDisposed = false;
+            private bool openAsyncPending = false;
             private String format;
             private int frameWidth;
             private int frameHeight;
@@ -168,6 +184,7 @@ namespace Mediastreamer2
             private object lockObj = new object();
             private Queue<Sample> sampleQueue;
             private MediaStreamDescription streamDesc;
+            private Dictionary<MediaSourceAttributesKeys, string> sourceAttributes;
             private Dictionary<MediaSampleAttributeKeys, string> emptyAttributes = new Dictionary<MediaSampleAttributeKeys, string>();
             private ManualResetEvent shutdownEvent;
         }

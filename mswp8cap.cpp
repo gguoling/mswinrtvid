@@ -42,7 +42,7 @@ bool MSWP8Cap::smInstantiated = false;
 MSWP8Cap::MSWP8Cap()
 	: mIsInitialized(false), mIsActivated(false), mIsStarted(false),
 	mRfc3984Packer(nullptr), mPackerMode(1), mStartTime(0), mSamplesCount(0), mFps(defaultFps), mBitrate(defaultBitrate),
-	mCameraSensorRotation(-1), mDeviceOrientation(0), mCameraLocation(CameraSensorLocation::Front),
+	mCameraSensorRotation(0), mDeviceOrientation(0), mCameraLocation(CameraSensorLocation::Front),
 	mDimensions(MS_VIDEO_SIZE_CIF_W, MS_VIDEO_SIZE_CIF_H),
 	mVideoDevice(nullptr)
 {
@@ -96,6 +96,7 @@ int MSWP8Cap::activate()
 
 			ms_message("[MSWP8Cap] OpenAsyncOperation completed");
 			mVideoDevice = operation->GetResults();
+			mCameraSensorRotation = (int)mVideoDevice->SensorRotationInDegrees;
 			HRESULT hr = reinterpret_cast<IUnknown*>(mVideoDevice)->QueryInterface(__uuidof(IAudioVideoCaptureDeviceNative), (void**) &pNativeDevice);
 			if ((pNativeDevice == nullptr) || FAILED(hr)) {
 				ms_error("[MSWP8Cap] Unable to query interface IAudioVideoCaptureDeviceNative");
@@ -135,6 +136,7 @@ int MSWP8Cap::deactivate()
 		mVideoSink->Release();
 		mVideoSink = nullptr;
 	}
+	mCameraSensorRotation = 0;
 	mIsActivated = false;
 	return 0;
 }
@@ -416,16 +418,12 @@ void MSWP8Cap::configure()
 	Collections::IIterator<Platform::Object^> ^valuesIterator;
 
 	// Configure the sensor rotation for the capture
-	mCameraSensorRotation = (int)mVideoDevice->SensorRotationInDegrees;
 	if (mCameraLocation == CameraSensorLocation::Front) {
-		uint32 rotation = 360 - mVideoDevice->SensorRotationInDegrees + mDeviceOrientation;
-		boxedSensorRotation = rotation % 360;
+		boxedSensorRotation = (360 - mCameraSensorRotation + 360 - mDeviceOrientation) % 360;
 	} else if (mCameraLocation == CameraSensorLocation::Back) {
-		uint32 rotation = mVideoDevice->SensorRotationInDegrees + mDeviceOrientation;
-		boxedSensorRotation = rotation % 360;
+		boxedSensorRotation = (mCameraSensorRotation + mDeviceOrientation) % 360;
 	} else {
-		uint32 rotation = mDeviceOrientation;
-		boxedSensorRotation = rotation;
+		boxedSensorRotation = mDeviceOrientation;
 	}
 	mVideoDevice->SetProperty(KnownCameraGeneralProperties::EncodeWithOrientation, boxedSensorRotation);
 
