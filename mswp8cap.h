@@ -82,6 +82,7 @@ namespace mswp8vid
 			void bitstreamToMsgb(uint8_t *encoded_buf, size_t size, MSQueue *nalus);
 			bool selectBestVideoSize();
 			void configure();
+			void printProperties();
 
 			static bool smInstantiated;
 			bool mIsInitialized;

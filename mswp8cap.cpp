@@ -159,6 +159,10 @@ void MSWP8Cap::start()
 			});
 			ResetEvent(mStartCompleted);
 			mIsStarted = true;
+
+#if 0
+			printProperties();
+#endif
 		}
 	}
 }
@@ -445,8 +449,7 @@ void MSWP8Cap::configure()
 	}
 	if (supportH264BaselineProfile) {
 		try {
-			Platform::Object^ boxedProfile = H264EncoderProfile::Baseline;
-			mVideoDevice->SetProperty(KnownCameraAudioVideoProperties::H264EncodingProfile, boxedProfile);
+			mVideoDevice->SetProperty(KnownCameraAudioVideoProperties::H264EncodingProfile, H264EncoderProfile::Baseline);
 		} catch (Platform::COMException^ e) {
 			if (e->HResult == E_NOTIMPL) {
 				ms_warning("[MSWP8Cap] This device does not support setting the H264 encoding profile");
@@ -484,6 +487,88 @@ void MSWP8Cap::detectCameras(MSWebCamManager *manager, MSWebCamDesc *desc)
 	if (count == 0) {
 		ms_warning("[MSWP8Cap] This device does not have a camera");
 	}
+}
+
+void MSWP8Cap::printProperties()
+{
+	Collections::IVectorView<Platform::Object^>^ values = mVideoDevice->GetSupportedPropertyValues(mCameraLocation, KnownCameraAudioVideoProperties::H264EnableKeyframes);
+	ms_message("[MSWP8Cap] H264EnableKeyFrames supported values:");
+	Collections::IIterator<Platform::Object^> ^valuesIterator = values->First();
+	while (valuesIterator->HasCurrent) {
+		bool enable = safe_cast<bool>(valuesIterator->Current);
+		ms_message("[MSWP8Cap]   %s", enable ? "true" : "false");
+		valuesIterator->MoveNext();
+	}
+	bool H264EnableKeyFrames = safe_cast<bool>(mVideoDevice->GetProperty(KnownCameraAudioVideoProperties::H264EnableKeyframes));
+	ms_message("[MSWP8Cap] H264EnableKeyFrames value: %s", H264EnableKeyFrames ? "true" : "false");
+
+	values = mVideoDevice->GetSupportedPropertyValues(mCameraLocation, KnownCameraAudioVideoProperties::H264EncodingLevel);
+	ms_message("[MSWP8Cap] H264EncodingLevel supported values:");
+	valuesIterator = values->First();
+	while (valuesIterator->HasCurrent) {
+		int value = safe_cast<int>(valuesIterator->Current);
+		ms_message("[MSWP8Cap]   %d", value);
+		valuesIterator->MoveNext();
+	}
+	auto H264EncodingLevel = mVideoDevice->GetProperty(KnownCameraAudioVideoProperties::H264EncodingLevel);
+	if (H264EncodingLevel != nullptr) {
+		int level = safe_cast<int>(H264EncodingLevel);
+		ms_message("[MSWP8Cap] H264EncodingLevel value: %d", level);
+	} else {
+		ms_message("[MSWP8Cap] Cannot get H264EncodingLevel");
+	}
+
+	values = mVideoDevice->GetSupportedPropertyValues(mCameraLocation, KnownCameraAudioVideoProperties::H264EncodingProfile);
+	ms_message("[MSWP8Cap] H264EncodingProfile supported values:");
+	valuesIterator = values->First();
+	while (valuesIterator->HasCurrent) {
+		int value = safe_cast<int>(valuesIterator->Current);
+		ms_message("[MSWP8Cap]   %d", value);
+		valuesIterator->MoveNext();
+	}
+	auto H264EncodingProfile = mVideoDevice->GetProperty(KnownCameraAudioVideoProperties::H264EncodingProfile);
+	if (H264EncodingProfile != nullptr) {
+		int profile = safe_cast<int>(H264EncodingProfile);
+		ms_message("[MSWP8Cap] H264EncodingProfile value: %u", profile);
+	} else {
+		ms_message("[MSWP8Cap] Cannot get H264EncodingProfile");
+	}
+
+	CameraCapturePropertyRange^ range = mVideoDevice->GetSupportedPropertyRange(mCameraLocation, KnownCameraAudioVideoProperties::H264QuantizationParameter);
+	ms_message("[MSWP8Cap] H264QuantizationParameter range: %u-%u", safe_cast<uint32>(range->Min), safe_cast<uint32>(range->Max));
+	auto H264QuantizationParameter = mVideoDevice->GetProperty(KnownCameraAudioVideoProperties::H264QuantizationParameter);
+	if (H264QuantizationParameter != nullptr) {
+		uint32 qp = safe_cast<uint32>(H264QuantizationParameter);
+		ms_message("[MSWP8Cap] H264QuantizationParameter value: %u", qp);
+	} else {
+		ms_message("[MSWP8Cap] Cannot get H264QuantizationParameter");
+	}
+
+	range = mVideoDevice->GetSupportedPropertyRange(mCameraLocation, KnownCameraAudioVideoProperties::VideoFrameRate);
+	ms_message("[MSWP8Cap] VideoFrameRate range: %u-%u", safe_cast<uint32>(range->Min), safe_cast<uint32>(range->Max));
+	uint32 fps = safe_cast<uint32>(mVideoDevice->GetProperty(KnownCameraAudioVideoProperties::VideoFrameRate));
+	ms_message("[MSWP8Cap] VideoFrameRate value: %u", fps);
+
+	values = mVideoDevice->GetSupportedPropertyValues(mCameraLocation, KnownCameraAudioVideoProperties::VideoTorchMode);
+	ms_message("[MSWP8Cap] VideoTorchMode supported values:");
+	valuesIterator = values->First();
+	while (valuesIterator->HasCurrent) {
+		uint32 value = safe_cast<uint32>(valuesIterator->Current);
+		ms_message("[MSWP8Cap]   %u", value);
+		valuesIterator->MoveNext();
+	}
+	auto VideoTorchMode = mVideoDevice->GetProperty(KnownCameraAudioVideoProperties::VideoTorchMode);
+	if (VideoTorchMode != nullptr) {
+		uint32 mode = safe_cast<uint32>(VideoTorchMode);
+		ms_message("[MSWP8Cap] VideoTorchMode value: %u", mode);
+	} else {
+		ms_message("[MSWP8Cap] Cannot get VideoTorchMode");
+	}
+
+	range = mVideoDevice->GetSupportedPropertyRange(mCameraLocation, KnownCameraAudioVideoProperties::VideoTorchPower);
+	ms_message("[MSWP8Cap] VideoTorchPower range: %u-%u", safe_cast<uint32>(range->Min), safe_cast<uint32>(range->Max));
+	uint32 power = safe_cast<uint32>(mVideoDevice->GetProperty(KnownCameraAudioVideoProperties::VideoTorchPower));
+	ms_message("[MSWP8Cap] VideoTorchPower value: %u", power);
 }
 
 
