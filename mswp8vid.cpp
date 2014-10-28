@@ -283,6 +283,12 @@ static void ms_wp8dis_uninit(MSFilter *f) {
  * Methods to configure the Windows Phone 8 video display filter              *
  *****************************************************************************/
 
+static int ms_wp8dis_get_video_size(MSFilter *f, void *arg) {
+	MSWP8Dis *w = static_cast<MSWP8Dis *>(f->data);
+	*((MSVideoSize *)arg) = w->getVideoSize();
+	return 0;
+}
+
 static int ms_wp8dis_support_rendering(MSFilter *f, void *arg) {
 	MS_UNUSED(f);
 	MSVideoDisplayDecodingSupport *decoding_support = static_cast<MSVideoDisplayDecodingSupport *>(arg);
@@ -311,6 +317,7 @@ static int ms_wp8dis_set_native_window_id(MSFilter *f, void *arg) {
 }
 
 static MSFilterMethod ms_wp8dis_methods[] = {
+	{	MS_FILTER_GET_VIDEO_SIZE,				ms_wp8dis_get_video_size		},
 	{	MS_VIDEO_DECODER_SUPPORT_RENDERING,		ms_wp8dis_support_rendering		},
 	{	MS_VIDEO_DISPLAY_SET_NATIVE_WINDOW_ID,	ms_wp8dis_set_native_window_id	},
 	{	0,										NULL							}

@@ -169,6 +169,14 @@ int MSWP8Dis::feed(MSFilter *f)
 	return 0;
 }
 
+MSVideoSize MSWP8Dis::getVideoSize()
+{
+	MSVideoSize vs;
+	vs.width = mWidth;
+	vs.height = mHeight;
+	return vs;
+}
+
 Mediastreamer2::WP8Video::IVideoRenderer^ MSWP8Dis::getVideoRenderer()
 {
 	return mRenderer;
