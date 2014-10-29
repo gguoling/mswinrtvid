@@ -104,6 +104,14 @@ int MSWP8Dis::deactivate()
 		rfc3984_destroy(mRfc3984Unpacker);
 		mRfc3984Unpacker = nullptr;
 	}
+	if (mSPS) {
+		freemsg(mSPS);
+		mSPS = nullptr;
+	}
+	if (mPPS) {
+		freemsg(mPPS);
+		mPPS = nullptr;
+	}
 	mIsActivated = false;
 	return 0;
 }
@@ -114,6 +122,7 @@ void MSWP8Dis::start()
 		mIsStarted = true;
 		Platform::String^ format = ref new Platform::String(L"H264");
 		if (mRenderer != nullptr) {
+			ms_message("[MSWP8Dis] Start renderer %s - %dx%d", "H264", mWidth, mHeight);
 			mRenderer->Start(format, mWidth, mHeight);
 		}
 	}
@@ -124,6 +133,7 @@ void MSWP8Dis::stop()
 	if (mIsStarted) {
 		mIsStarted = false;
 		if (mRenderer != nullptr) {
+			ms_message("[MSWP8Dis] Stop renderer");
 			mRenderer->Stop();
 		}
 	}
@@ -144,6 +154,7 @@ int MSWP8Dis::feed(MSFilter *f)
 				if (need_reinit) {
 					Platform::String^ format = ref new Platform::String(L"H264");
 					if (mRenderer != nullptr) {
+						ms_message("[MSWP8Dis] Change renderer format: %s - %dx%d", "H264", mWidth, mHeight);
 						mRenderer->ChangeFormat(format, mWidth, mHeight);
 					}
 				}
@@ -258,12 +269,12 @@ bool MSWP8Dis::checkSPSChange(mblk_t *sps)
 	if (mSPS) {
 		ret = (msgdsize(sps) != msgdsize(mSPS)) || (memcmp(mSPS->b_rptr, mSPS->b_rptr, msgdsize(sps)) != 0);
 		if (ret) {
-			ms_message("SPS changed ! %i,%i", msgdsize(sps), msgdsize(mSPS));
+			ms_message("[MSWP8Dis] SPS changed ! %i,%i", msgdsize(sps), msgdsize(mSPS));
 			updateSPS(sps);
 			updatePPS(nullptr);
 		}
 	} else {
-		ms_message("Receiving first SPS");
+		ms_message("[MSWP8Dis] Receiving first SPS");
 		updateSPS(sps);
 		ret = true;
 	}
@@ -276,11 +287,11 @@ bool MSWP8Dis::checkPPSChange(mblk_t *pps)
 	if (mPPS) {
 		ret = (msgdsize(pps) != msgdsize(mPPS)) || (memcmp(mPPS->b_rptr, pps->b_rptr, msgdsize(pps)) != 0);
 		if (ret) {
-			ms_message("PPS changed ! %i,%i", msgdsize(pps), msgdsize(mPPS));
+			ms_message("[MSWP8Dis] PPS changed ! %i,%i", msgdsize(pps), msgdsize(mPPS));
 			updatePPS(pps);
 		}
 	} else {
-		ms_message("Receiving first PPS");
+		ms_message("[MSWP8Dis] Receiving first PPS");
 		updatePPS(pps);
 		ret = true;
 	}
@@ -354,6 +365,6 @@ void MSWP8Dis::updateVideoSizeFromSPS()
 	pic_height_in_map_units_minus1 = get_ue_at_bit_offset(data, &bit_offset);
  	mWidth = (pic_width_in_mbs_minus1 + 1) * 16;
  	mHeight = (pic_height_in_map_units_minus1 + 1) * 16;
-	ms_message("Change video size from SPS: %ux%u", mWidth, mHeight);
+	ms_message("[MSWP8Dis] Change video size from SPS: %ux%u", mWidth, mHeight);
 	MS_UNUSED(dummy);
 }

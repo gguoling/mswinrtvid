@@ -113,17 +113,17 @@ namespace Mediastreamer2
                 this.format = format;
                 this.frameWidth = width;
                 this.frameHeight = height;
+
+                if (this.openAsyncPending)
+                {
+                    ReportOpenAsyncCompleted();
+                }
             }
 
             public void OnSampleReceived(Windows.Storage.Streams.IBuffer pBuffer, UInt64 hnsPresentationTime)
             {
                 lock (lockObj)
                 {
-                    if (this.openAsyncPending)
-                    {
-                        ReportOpenAsyncCompleted();
-                    }
-
                     if (this.sampleQueue.Count >= VideoStreamSource.maxSampleQueueSize)
                     {
                         // The sample queue is full, discard the older sample
@@ -161,11 +161,7 @@ namespace Mediastreamer2
                     {
                         Sample sample = this.sampleQueue.Dequeue();
                         Stream s = System.Runtime.InteropServices.WindowsRuntime.WindowsRuntimeBufferExtensions.AsStream(sample.buffer);
-
-                        /*Dictionary<MediaSampleAttributeKeys, string> sampleAttributes = new Dictionary<MediaSampleAttributeKeys, string>();
-                        sampleAttributes[MediaSampleAttributeKeys.FrameWidth] = this.frameWidth.ToString();
-                        sampleAttributes[MediaSampleAttributeKeys.FrameHeight] = this.frameHeight.ToString();*/
-                        MediaStreamSample msSample = new MediaStreamSample(this.streamDesc, s, 0, s.Length, (long)sample.presentationTime, this.emptyAttributes/*sampleAttributes*/);
+                        MediaStreamSample msSample = new MediaStreamSample(this.streamDesc, s, 0, s.Length, (long)sample.presentationTime, this.emptyAttributes);
                         ReportGetSampleCompleted(msSample);
                         this.outstandingSamplesCount--;
                     }
