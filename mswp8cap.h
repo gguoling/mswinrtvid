@@ -67,12 +67,14 @@ namespace mswp8vid
 			void OnSampleAvailable(ULONGLONG hnsPresentationTime, ULONGLONG hnsSampleDuration, DWORD cbSample, BYTE* pSample);
 
 			void setCameraLocation(uint32 location);
-			float getFps() { return mFps; }
+			float getFps() { return mVConf.fps; }
 			void setFps(float fps);
 			int getBitrate() { return mBitrate; }
 			void setBitrate(int bitrate);
 			MSVideoSize getVideoSize();
 			void setVideoSize(MSVideoSize vs);
+			const MSVideoConfiguration * getConfigurationList();
+			void setConfiguration(const MSVideoConfiguration *vconf);
 			int getCameraSensorRotation() { return mCameraSensorRotation; }
 			void setDeviceOrientation(int degrees);
 			void requestIdrFrame();
@@ -96,15 +98,14 @@ namespace mswp8vid
 			int mPackerMode;
 			uint64_t mStartTime;
 			int mSamplesCount;
-			float mFps;
 			int mBitrate;
 			int mCameraSensorRotation;
 			int mDeviceOrientation;
 			MSVideoStarter mStarter;
+			MSVideoConfiguration mVConf;
 			HANDLE mStartCompleted;
 			HANDLE mStopCompleted;
 			Windows::Phone::Media::Capture::CameraSensorLocation mCameraLocation;
-			Windows::Foundation::Size mDimensions;
 			Windows::Phone::Media::Capture::AudioVideoCaptureDevice^ mVideoDevice;
 			SampleSink *mVideoSink;
 			IAudioVideoCaptureDeviceNative* mNativeVideoDevice;

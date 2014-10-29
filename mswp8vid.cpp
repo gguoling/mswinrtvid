@@ -124,6 +124,20 @@ static int ms_wp8cap_req_vfu(MSFilter *f, void *arg) {
 	return 0;
 }
 
+static int ms_wp8cap_get_configuration_list(MSFilter *f, void *arg) {
+	MSWP8Cap *r = static_cast<MSWP8Cap *>(f->data);
+	const MSVideoConfiguration **vconf_list = (const MSVideoConfiguration **)arg;
+	*vconf_list = r->getConfigurationList();
+	return 0;
+}
+
+static int ms_wp8cap_set_configuration(MSFilter *f, void *arg) {
+	MSWP8Cap *r = static_cast<MSWP8Cap *>(f->data);
+	const MSVideoConfiguration *vconf = (const MSVideoConfiguration *)arg;
+	r->setConfiguration(vconf);
+	return 0;
+}
+
 static int ms_wp8cap_get_camera_sensor_rotation(MSFilter *f, void *arg) {
 	MSWP8Cap *r = static_cast<MSWP8Cap *>(f->data);
 	*((int *)arg) = r->getCameraSensorRotation();
@@ -146,6 +160,8 @@ static MSFilterMethod ms_wp8cap_read_methods[] = {
 	{	MS_FILTER_SET_BITRATE,		ms_wp8cap_set_bitrate	},
 	{	MS_FILTER_REQ_VFU,			ms_wp8cap_req_vfu		},
 	{	MS_VIDEO_ENCODER_REQ_VFU,	ms_wp8cap_req_vfu		},
+	{	MS_VIDEO_ENCODER_GET_CONFIGURATION_LIST, ms_wp8cap_get_configuration_list },
+	{	MS_VIDEO_ENCODER_SET_CONFIGURATION,	ms_wp8cap_set_configuration },
 	{	MS_VIDEO_CAPTURE_GET_CAMERA_SENSOR_ROTATION,	ms_wp8cap_get_camera_sensor_rotation	},
 	{	MS_VIDEO_CAPTURE_SET_DEVICE_ORIENTATION,	ms_wp8cap_set_device_orientation	},
 	{	0,							NULL					}

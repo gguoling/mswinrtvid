@@ -39,16 +39,28 @@ static const int defaultBitrate = 384000;
 bool MSWP8Cap::smInstantiated = false;
 
 
+#define MS_H264_CONF(required_bitrate, bitrate_limit, resolution, fps, ncpus) \
+	{ required_bitrate, bitrate_limit, { MS_VIDEO_SIZE_ ## resolution ## _W, MS_VIDEO_SIZE_ ## resolution ## _H }, fps, ncpus, NULL }
+
+static const MSVideoConfiguration h264_conf_list[] = {
+	MS_H264_CONF( 300000, 500000,   VGA, 12, 1),
+	MS_H264_CONF( 170000, 300000,  QVGA, 12, 1),
+	MS_H264_CONF( 128000,  170000, QCIF, 10, 1),
+	MS_H264_CONF(  64000,  128000, QCIF,  7, 1),
+	MS_H264_CONF(      0,   64000, QCIF,  5 ,1)
+};
+
+
 MSWP8Cap::MSWP8Cap()
 	: mIsInitialized(false), mIsActivated(false), mIsStarted(false),
-	mRfc3984Packer(nullptr), mPackerMode(1), mStartTime(0), mSamplesCount(0), mFps(defaultFps), mBitrate(defaultBitrate),
+	mRfc3984Packer(nullptr), mPackerMode(1), mStartTime(0), mSamplesCount(0), mBitrate(defaultBitrate),
 	mCameraSensorRotation(0), mDeviceOrientation(0), mCameraLocation(CameraSensorLocation::Front),
-	mDimensions(MS_VIDEO_SIZE_CIF_W, MS_VIDEO_SIZE_CIF_H),
 	mVideoDevice(nullptr)
 {
 	ms_mutex_init(&mMutex, NULL);
 	ms_queue_init(&mSampleToSendQueue);
 	ms_queue_init(&mSampleToFreeQueue);
+	mVConf = ms_video_find_best_configuration_for_bitrate(h264_conf_list, mBitrate, ms_get_cpu_count());
 
 	if (smInstantiated) {
 		ms_error("[MSWP8Cap] An video capture filter is already instantiated. A second one can not be created.");
@@ -84,13 +96,15 @@ int MSWP8Cap::activate()
 
 	if (!mIsInitialized) return -1;
 
-	selectBestVideoSize();
 	mRfc3984Packer = rfc3984_new();
 	rfc3984_set_mode(mRfc3984Packer, mPackerMode);
 	rfc3984_enable_stap_a(mRfc3984Packer, FALSE);
 	ms_video_starter_init(&mStarter);
 
-	openOperation = AudioVideoCaptureDevice::OpenForVideoOnlyAsync(mCameraLocation, mDimensions);
+	Size dimensions;
+	dimensions.Width = (float)mVConf.vsize.width;
+	dimensions.Height = (float)mVConf.vsize.height;
+	openOperation = AudioVideoCaptureDevice::OpenForVideoOnlyAsync(mCameraLocation, dimensions);
 	openOperation->Completed = ref new AsyncOperationCompletedHandler<AudioVideoCaptureDevice^>([this] (IAsyncOperation<AudioVideoCaptureDevice^> ^operation, Windows::Foundation::AsyncStatus status) {
 		if (status == Windows::Foundation::AsyncStatus::Completed) {
 			IAudioVideoCaptureDeviceNative *pNativeDevice = nullptr; 
@@ -275,44 +289,64 @@ void MSWP8Cap::setCameraLocation(uint32 location)
 
 void MSWP8Cap::setFps(float fps)
 {
-	if (mIsActivated) {
-		uint32 value = (uint32)fps;
-		CameraCapturePropertyRange^ range = mVideoDevice->GetSupportedPropertyRange(mCameraLocation, KnownCameraAudioVideoProperties::VideoFrameRate);
-		uint32_t min = safe_cast<uint32>(range->Min);
-		uint32_t max = safe_cast<uint32>(range->Max);
-		if (value < min) value = min;
-		else if (value > max) value = max;
-		mVideoDevice->SetProperty(KnownCameraAudioVideoProperties::VideoFrameRate, value);
-		value = safe_cast<uint32>(mVideoDevice->GetProperty(KnownCameraAudioVideoProperties::VideoFrameRate));
-		mFps = (float)value;
-	} else {
-		mFps = fps;
-	}
+	mVConf.fps = fps;
+	setConfiguration(&mVConf);
 }
 
 void MSWP8Cap::setBitrate(int bitrate)
 {
-	// TODO
+	if (mIsActivated) {
+		/* Encoding is already ongoing, do not change video size, only bitrate. */
+		mVConf.required_bitrate = bitrate;
+		setConfiguration(&mVConf);
+	} else {
+		MSVideoConfiguration best_vconf = ms_video_find_best_configuration_for_bitrate(h264_conf_list, bitrate, ms_get_cpu_count());
+		setConfiguration(&best_vconf);
+	}
 }
 
 MSVideoSize MSWP8Cap::getVideoSize()
 {
 	MSVideoSize vs;
-	vs.width = (int)mDimensions.Width;
-	vs.height = (int)mDimensions.Height;
+	if (((mCameraSensorRotation + mDeviceOrientation) % 180) != 0) {
+		vs.width = mVConf.vsize.height;
+		vs.height = mVConf.vsize.width;
+	} else {
+		vs = mVConf.vsize;
+	}
 	return vs;
 }
 
 void MSWP8Cap::setVideoSize(MSVideoSize vs)
 {
-	mDimensions.Width = (float)vs.width;
-	mDimensions.Height = (float)vs.height;
+	MSVideoConfiguration best_vconf;
+	best_vconf = ms_video_find_best_configuration_for_size(h264_conf_list, vs, ms_get_cpu_count());
+	mVConf.vsize = vs;
+	mVConf.fps = best_vconf.fps;
+	mVConf.bitrate_limit = best_vconf.bitrate_limit;
+	selectBestVideoSize();
+	setConfiguration(&mVConf);
+}
+
+const MSVideoConfiguration * MSWP8Cap::getConfigurationList()
+{
+	return h264_conf_list;
+}
+
+void MSWP8Cap::setConfiguration(const MSVideoConfiguration *vconf)
+{
+	if (vconf != &mVConf) memcpy(&mVConf, vconf, sizeof(MSVideoConfiguration));
+
+	if (mVConf.required_bitrate > mVConf.bitrate_limit)
+		mVConf.required_bitrate = mVConf.bitrate_limit;
 
 	if (mIsActivated) {
+		// Set the video size
 		IAsyncAction^ action = nullptr;
-
-		selectBestVideoSize();
-		action = mVideoDevice->SetCaptureResolutionAsync(mDimensions);
+		Size dimensions;
+		dimensions.Width = (float)mVConf.vsize.width;
+		dimensions.Height = (float)mVConf.vsize.height;
+		action = mVideoDevice->SetCaptureResolutionAsync(dimensions);
 		action->Completed = ref new AsyncActionCompletedHandler([this] (IAsyncAction^ action, Windows::Foundation::AsyncStatus status) {
 			if (status == Windows::Foundation::AsyncStatus::Completed) {
 				ms_debug("[MSWP8Cap] AsyncAction completed");
@@ -324,6 +358,16 @@ void MSWP8Cap::setVideoSize(MSVideoSize vs)
 				ms_error("[MSWP8Cap] AsyncAction failed");
 			}
 		});
+
+		// Set the frame rate
+		uint32 value = (uint32)mVConf.fps;
+		CameraCapturePropertyRange^ range = mVideoDevice->GetSupportedPropertyRange(mCameraLocation, KnownCameraAudioVideoProperties::VideoFrameRate);
+		uint32_t min = safe_cast<uint32>(range->Min);
+		uint32_t max = safe_cast<uint32>(range->Max);
+		if (value < min) value = min;
+		else if (value > max) value = max;
+		mVideoDevice->SetProperty(KnownCameraAudioVideoProperties::VideoFrameRate, value);
+		value = safe_cast<uint32>(mVideoDevice->GetProperty(KnownCameraAudioVideoProperties::VideoFrameRate));
 	}
 }
 
@@ -381,8 +425,8 @@ bool MSWP8Cap::selectBestVideoSize()
 	MSVideoSize minSize = { 65536, 65536 };
 
 	bestFoundSize.width = bestFoundSize.height = 0;
-	requestedSize.width = (int)mDimensions.Width;
-	requestedSize.height = (int)mDimensions.Height;
+	requestedSize.width = mVConf.vsize.width;
+	requestedSize.height = mVConf.vsize.height;
 	availableSizes = AudioVideoCaptureDevice::GetAvailableCaptureResolutions(mCameraLocation);
 	availableSizesIterator = availableSizes->First();
 	while (availableSizesIterator->HasCurrent) {
@@ -403,13 +447,13 @@ bool MSWP8Cap::selectBestVideoSize()
 
 	if ((bestFoundSize.width == 0) && bestFoundSize.height == 0) {
 		ms_warning("[MSWP8Cap] This camera does not support our video size, use minimum size available");
-		mDimensions.Width = (float)minSize.width;
-		mDimensions.Height = (float)minSize.height;
+		mVConf.vsize.width = minSize.width;
+		mVConf.vsize.height = minSize.height;
 		return false;
 	}
 
-	mDimensions.Width = (float)bestFoundSize.width;
-	mDimensions.Height = (float)bestFoundSize.height;
+	mVConf.vsize.width = bestFoundSize.width;
+	mVConf.vsize.height = bestFoundSize.height;
 	ms_message("[MSWP8Cap] Best video size is %ix%i", bestFoundSize.width, bestFoundSize.height);
 	return true;
 }
@@ -459,9 +503,20 @@ void MSWP8Cap::configure()
 	} else {
 		ms_warning("[MSWP8Cap] This camera does not support H264 baseline profile");
 	}
-
-	// Define the video frame rate
-	setFps(mFps);
+	try {
+		mVideoDevice->SetProperty(KnownCameraAudioVideoProperties::H264EncodingLevel, H264EncoderLevel::Level1_3);
+	} catch (Platform::COMException^ e) {
+		if (e->HResult == E_NOTIMPL) {
+			ms_warning("[MSWP8Cap] This device does not support setting the H264 encoding level");
+		}
+	}
+	try {
+		mVideoDevice->SetProperty(KnownCameraAudioVideoProperties::H264QuantizationParameter, 45);
+	} catch (Platform::COMException^ e) {
+		if (e->HResult == E_NOTIMPL) {
+			ms_warning("[MSWP8Cap] This device does not support setting the H264 quantization parameter");
+		}
+	}
 }
 
 
