@@ -535,7 +535,11 @@ void MSWP8Cap::detectCameras(MSWebCamManager *manager, MSWebCamDesc *desc)
 		wcstombs(buffer, availableSensorLocationsIterator->Current.ToString()->Data(), sizeof(buffer) - 1);
 		cam->name = ms_strdup(buffer);
 		cam->data = (void *)availableSensorLocationsIterator->Current;
-		ms_web_cam_manager_add_cam(manager, cam);
+		if (strcmp(cam->name, "Front") == 0) {
+			ms_web_cam_manager_prepend_cam(manager, cam);
+		} else {
+			ms_web_cam_manager_add_cam(manager, cam);
+		}
 		availableSensorLocationsIterator->MoveNext();
 		count++;
 	}
