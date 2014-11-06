@@ -45,9 +45,8 @@ bool MSWP8Cap::smInstantiated = false;
 static const MSVideoConfiguration h264_conf_list[] = {
 	MS_H264_CONF( 300000, 500000,   VGA, 12, 1),
 	MS_H264_CONF( 170000, 300000,  QVGA, 12, 1),
-	MS_H264_CONF( 128000,  170000, QCIF, 10, 1),
-	MS_H264_CONF(  64000,  128000, QCIF,  7, 1),
-	MS_H264_CONF(      0,   64000, QCIF,  5 ,1)
+	MS_H264_CONF( 120000,  170000, QVGA,  8, 1),
+	MS_H264_CONF(      0,  120000, QVGA,  5 ,1)
 };
 
 
@@ -511,7 +510,7 @@ void MSWP8Cap::configure()
 		}
 	}
 	try {
-		mVideoDevice->SetProperty(KnownCameraAudioVideoProperties::H264QuantizationParameter, 45);
+		mVideoDevice->SetProperty(KnownCameraAudioVideoProperties::H264QuantizationParameter, 32);
 	} catch (Platform::COMException^ e) {
 		if (e->HResult == E_NOTIMPL) {
 			ms_warning("[MSWP8Cap] This device does not support setting the H264 quantization parameter");
