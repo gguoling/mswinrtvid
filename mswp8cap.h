@@ -103,6 +103,7 @@ namespace mswp8vid
 			int mDeviceOrientation;
 			MSVideoStarter mStarter;
 			MSVideoConfiguration mVConf;
+			HANDLE mActivationCompleted;
 			HANDLE mStartCompleted;
 			HANDLE mStopCompleted;
 			Windows::Phone::Media::Capture::CameraSensorLocation mCameraLocation;

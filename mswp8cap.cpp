@@ -56,24 +56,29 @@ MSWP8Cap::MSWP8Cap()
 	mCameraSensorRotation(0), mDeviceOrientation(0), mCameraLocation(CameraSensorLocation::Front),
 	mVideoDevice(nullptr)
 {
-	ms_mutex_init(&mMutex, NULL);
-	ms_queue_init(&mSampleToSendQueue);
-	ms_queue_init(&mSampleToFreeQueue);
-	mVConf = ms_video_find_best_configuration_for_bitrate(h264_conf_list, mBitrate, ms_get_cpu_count());
-
 	if (smInstantiated) {
 		ms_error("[MSWP8Cap] An video capture filter is already instantiated. A second one can not be created.");
 		return;
 	}
 
-	mStartCompleted = CreateEventEx(NULL, NULL, CREATE_EVENT_MANUAL_RESET, EVENT_ALL_ACCESS);
+	ms_mutex_init(&mMutex, NULL);
+	ms_queue_init(&mSampleToSendQueue);
+	ms_queue_init(&mSampleToFreeQueue);
+	mVConf = ms_video_find_best_configuration_for_bitrate(h264_conf_list, mBitrate, ms_get_cpu_count());
+
+	mActivationCompleted = CreateEventEx(NULL, L"MSWP8Cap\Activation", 0, EVENT_ALL_ACCESS);
+	if (!mActivationCompleted) {
+		ms_error("[MSWP8Cap] Could not create activation event [%i]", GetLastError());
+		return;
+	}
+	mStartCompleted = CreateEventEx(NULL, L"MSWP8Cap\Start", 0, EVENT_ALL_ACCESS);
 	if (!mStartCompleted) {
 		ms_error("[MSWP8Cap] Could not create start event [%i]", GetLastError());
 		return;
 	}
-	mStopCompleted = CreateEventEx(NULL, NULL, CREATE_EVENT_MANUAL_RESET, EVENT_ALL_ACCESS);
+	mStopCompleted = CreateEventEx(NULL, L"MSWP8Cap\Stop", 0, EVENT_ALL_ACCESS);
 	if (!mStopCompleted) {
-		ms_error("[MSWP8Cap] Could not create shutdown event [%i]", GetLastError());
+		ms_error("[MSWP8Cap] Could not create stop event [%i]", GetLastError());
 		return;
 	}
 
@@ -105,34 +110,37 @@ int MSWP8Cap::activate()
 	dimensions.Height = (float)mVConf.vsize.height;
 	openOperation = AudioVideoCaptureDevice::OpenForVideoOnlyAsync(mCameraLocation, dimensions);
 	openOperation->Completed = ref new AsyncOperationCompletedHandler<AudioVideoCaptureDevice^>([this] (IAsyncOperation<AudioVideoCaptureDevice^> ^operation, Windows::Foundation::AsyncStatus status) {
-		if (status == Windows::Foundation::AsyncStatus::Completed) {
-			IAudioVideoCaptureDeviceNative *pNativeDevice = nullptr; 
-
+		switch (status) {
+		case Windows::Foundation::AsyncStatus::Completed:
+		{
+			IAudioVideoCaptureDeviceNative *pNativeDevice = nullptr;
 			ms_message("[MSWP8Cap] OpenAsyncOperation completed");
 			mVideoDevice = operation->GetResults();
 			mCameraSensorRotation = (int)mVideoDevice->SensorRotationInDegrees;
-			HRESULT hr = reinterpret_cast<IUnknown*>(mVideoDevice)->QueryInterface(__uuidof(IAudioVideoCaptureDeviceNative), (void**) &pNativeDevice);
+			HRESULT hr = reinterpret_cast<IUnknown*>(mVideoDevice)->QueryInterface(__uuidof(IAudioVideoCaptureDeviceNative), (void**)&pNativeDevice);
 			if ((pNativeDevice == nullptr) || FAILED(hr)) {
 				ms_error("[MSWP8Cap] Unable to query interface IAudioVideoCaptureDeviceNative");
 			} else {
-				mIsActivated = true;
 				mNativeVideoDevice = pNativeDevice;
 				configure();
-
-				// Create the sink and notify the start completion
 				MakeAndInitialize<SampleSink>(&(this->mVideoSink), this);
 				mNativeVideoDevice->SetVideoSampleSink(mVideoSink);
-				SetEvent(mStartCompleted);
+				mIsActivated = true;
 			}
 		}
-		else if (status == Windows::Foundation::AsyncStatus::Canceled) {
+			break;
+		case Windows::Foundation::AsyncStatus::Canceled:
 			ms_warning("[MSWP8Cap] OpenAsyncOperation has been canceled");
+			break;
+		case Windows::Foundation::AsyncStatus::Error:
+			ms_error("[MSWP8Cap] OpenAsyncOperation failed [0x%x]", operation->ErrorCode);
+			break;
+		default:
+			break;
 		}
-		else if (status == Windows::Foundation::AsyncStatus::Error) {
-			ms_error("[MSWP8Cap] OpenAsyncOperation failed");
-		}
+		SetEvent(mActivationCompleted);
 	});
-
+	DWORD waitResult = WaitForSingleObjectEx(mActivationCompleted, INFINITE, FALSE);
 	return 0;
 }
 
@@ -157,27 +165,30 @@ int MSWP8Cap::deactivate()
 
 void MSWP8Cap::start()
 {
-	DWORD waitResult;
-
 	if (!mIsStarted && mIsActivated) {
-		waitResult = WaitForSingleObjectEx(mStartCompleted, 0, FALSE);
-		if (waitResult == WAIT_OBJECT_0) {
-			Windows::Foundation::IAsyncAction^ startRecordingAction = mVideoDevice->StartRecordingToSinkAsync();
-			startRecordingAction->Completed = ref new AsyncActionCompletedHandler([this] (IAsyncAction ^asyncInfo, Windows::Foundation::AsyncStatus status) {
-				if (status == Windows::Foundation::AsyncStatus::Completed) {
-					ms_message("[MSWP8Cap] StartRecordingToSinkAsync completed");
-				}
-				else if ((status == Windows::Foundation::AsyncStatus::Error) || (status == Windows::Foundation::AsyncStatus::Canceled)) {
-					ms_error("[MSWP8Cap] StartRecordingToSinkAsync did not complete");
-				}
-			});
-			ResetEvent(mStartCompleted);
+		IAsyncAction^ startRecordingAction = mVideoDevice->StartRecordingToSinkAsync();
+		startRecordingAction->Completed = ref new AsyncActionCompletedHandler([this] (IAsyncAction ^asyncAction, Windows::Foundation::AsyncStatus status) {
+			switch (status) {
+			case Windows::Foundation::AsyncStatus::Completed:
+				ms_message("[MSWP8Cap] StartRecordingToSinkAsync completed");
+				break;
+			case Windows::Foundation::AsyncStatus::Canceled:
+				ms_error("[MSWP8Cap] StartRecordingToSinkAsync has been cancelled");
+				break;
+			case Windows::Foundation::AsyncStatus::Error:
+				ms_error("[MSWP8Cap] StartRecordingToSinkAsync failed");
+				break;
+			default:
+				break;
+			}
 			mIsStarted = true;
+			SetEvent(mStartCompleted);
+		});
 
 #if 0
-			printProperties();
+		printProperties();
 #endif
-		}
+		WaitForSingleObjectEx(mStartCompleted, INFINITE, FALSE);
 	}
 }
 
@@ -189,12 +200,20 @@ void MSWP8Cap::stop()
 
 	if (mVideoDevice) {
 		try {
-			Windows::Foundation::IAsyncAction^ stopRecordingAction = mVideoDevice->StopRecordingAsync();
-			stopRecordingAction->Completed = ref new AsyncActionCompletedHandler([this] (IAsyncAction ^action, Windows::Foundation::AsyncStatus status) {
-				if (status == Windows::Foundation::AsyncStatus::Completed) {
-					ms_message("[MSWP8Cap] Video successfully stopped");
-				} else {
-					ms_error("[MSWP8Cap] Error while stopping recording");
+			IAsyncAction^ stopRecordingAction = mVideoDevice->StopRecordingAsync();
+			stopRecordingAction->Completed = ref new AsyncActionCompletedHandler([this] (IAsyncAction ^asyncAction, Windows::Foundation::AsyncStatus status) {
+				switch (status) {
+				case Windows::Foundation::AsyncStatus::Completed:
+					ms_message("[MSWP8Cap] StopRecordingAsync completed");
+					break;
+				case Windows::Foundation::AsyncStatus::Canceled:
+					ms_error("[MSWP8Cap] StopRecordingAsync has been cancelled");
+					break;
+				case Windows::Foundation::AsyncStatus::Error:
+					ms_error("[MSWP8Cap] StopRecordingAsync failed");
+					break;
+				default:
+					break;
 				}
 				mVideoDevice = nullptr;
 				mIsStarted = false;
@@ -209,8 +228,7 @@ void MSWP8Cap::stop()
 			SetEvent(mStopCompleted);
 		}
 
-		WaitForSingleObjectEx(mStopCompleted, 3000, FALSE);
-		ResetEvent(mStopCompleted);
+		WaitForSingleObjectEx(mStopCompleted, INFINITE, FALSE);
 	}
 
 	ms_mutex_lock(&mMutex);
