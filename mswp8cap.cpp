@@ -66,17 +66,17 @@ MSWP8Cap::MSWP8Cap()
 	ms_queue_init(&mSampleToFreeQueue);
 	mVConf = ms_video_find_best_configuration_for_bitrate(h264_conf_list, mBitrate, ms_get_cpu_count());
 
-	mActivationCompleted = CreateEventEx(NULL, L"MSWP8Cap\Activation", 0, EVENT_ALL_ACCESS);
+	mActivationCompleted = CreateEventEx(NULL, L"Local\\MSWP8CapActivation", 0, EVENT_ALL_ACCESS);
 	if (!mActivationCompleted) {
 		ms_error("[MSWP8Cap] Could not create activation event [%i]", GetLastError());
 		return;
 	}
-	mStartCompleted = CreateEventEx(NULL, L"MSWP8Cap\Start", 0, EVENT_ALL_ACCESS);
+	mStartCompleted = CreateEventEx(NULL, L"Local\\MSWP8CapStart", 0, EVENT_ALL_ACCESS);
 	if (!mStartCompleted) {
 		ms_error("[MSWP8Cap] Could not create start event [%i]", GetLastError());
 		return;
 	}
-	mStopCompleted = CreateEventEx(NULL, L"MSWP8Cap\Stop", 0, EVENT_ALL_ACCESS);
+	mStopCompleted = CreateEventEx(NULL, L"Local\\MSWP8CapStop", 0, EVENT_ALL_ACCESS);
 	if (!mStopCompleted) {
 		ms_error("[MSWP8Cap] Could not create stop event [%i]", GetLastError());
 		return;
@@ -89,6 +89,19 @@ MSWP8Cap::MSWP8Cap()
 MSWP8Cap::~MSWP8Cap()
 {
 	stop();
+	deactivate();
+	if (mStopCompleted) {
+		CloseHandle(mStopCompleted);
+		mStopCompleted = NULL;
+	}
+	if (mStartCompleted) {
+		CloseHandle(mStartCompleted);
+		mStartCompleted = NULL;
+	}
+	if (mActivationCompleted) {
+		CloseHandle(mActivationCompleted);
+		mActivationCompleted = NULL;
+	}
 	ms_mutex_destroy(&mMutex);
 	smInstantiated = false;
 }
@@ -140,7 +153,7 @@ int MSWP8Cap::activate()
 		}
 		SetEvent(mActivationCompleted);
 	});
-	DWORD waitResult = WaitForSingleObjectEx(mActivationCompleted, INFINITE, FALSE);
+	WaitForSingleObjectEx(mActivationCompleted, INFINITE, FALSE);
 	return 0;
 }
 
@@ -150,14 +163,6 @@ int MSWP8Cap::deactivate()
 		rfc3984_destroy(mRfc3984Packer);
 		mRfc3984Packer = nullptr;
 	}
-	if (mNativeVideoDevice) {
-		mNativeVideoDevice->Release();
-		mNativeVideoDevice = nullptr;
-	}
-	if (mVideoSink) {
-		mVideoSink->Release();
-		mVideoSink = nullptr;
-	}
 	mCameraSensorRotation = 0;
 	mIsActivated = false;
 	return 0;
@@ -166,8 +171,7 @@ int MSWP8Cap::deactivate()
 void MSWP8Cap::start()
 {
 	if (!mIsStarted && mIsActivated) {
-		IAsyncAction^ startRecordingAction = mVideoDevice->StartRecordingToSinkAsync();
-		startRecordingAction->Completed = ref new AsyncActionCompletedHandler([this] (IAsyncAction ^asyncAction, Windows::Foundation::AsyncStatus status) {
+		mVideoDevice->StartRecordingToSinkAsync()->Completed = ref new AsyncActionCompletedHandler([this] (IAsyncAction ^asyncAction, Windows::Foundation::AsyncStatus status) {
 			switch (status) {
 			case Windows::Foundation::AsyncStatus::Completed:
 				ms_message("[MSWP8Cap] StartRecordingToSinkAsync completed");
@@ -200,8 +204,7 @@ void MSWP8Cap::stop()
 
 	if (mVideoDevice) {
 		try {
-			IAsyncAction^ stopRecordingAction = mVideoDevice->StopRecordingAsync();
-			stopRecordingAction->Completed = ref new AsyncActionCompletedHandler([this] (IAsyncAction ^asyncAction, Windows::Foundation::AsyncStatus status) {
+			mVideoDevice->StopRecordingAsync()->Completed = ref new AsyncActionCompletedHandler([this] (IAsyncAction ^asyncAction, Windows::Foundation::AsyncStatus status) {
 				switch (status) {
 				case Windows::Foundation::AsyncStatus::Completed:
 					ms_message("[MSWP8Cap] StopRecordingAsync completed");
@@ -219,13 +222,22 @@ void MSWP8Cap::stop()
 				mIsStarted = false;
 				SetEvent(mStopCompleted);
 			});
-		} catch(...) {
+		} catch(Platform::ObjectDisposedException^ e) {
 			// A Platform::ObjectDisposedException can be raised if the app has had its access
 			// to video revoked (most commonly when the app is going out of the foreground)
-			ms_warning("[MSWP8Cap] Exception caught while destroying video capture");
+			ms_warning("[MSWP8Cap] Exception caught during StopRecordingAsync");
 			mVideoDevice = nullptr;
 			mIsStarted = false;
 			SetEvent(mStopCompleted);
+		}
+
+		if (mNativeVideoDevice) {
+			mNativeVideoDevice->Release();
+			mNativeVideoDevice = nullptr;
+		}
+		if (mVideoSink) {
+			mVideoSink->Release();
+			mVideoSink = nullptr;
 		}
 
 		WaitForSingleObjectEx(mStopCompleted, INFINITE, FALSE);
