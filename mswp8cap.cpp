@@ -138,6 +138,8 @@ int MSWP8Cap::activate()
 				configure();
 				MakeAndInitialize<SampleSink>(&(this->mVideoSink), this);
 				mNativeVideoDevice->SetVideoSampleSink(mVideoSink);
+				applyVideoSize();
+				applyFps();
 				mIsActivated = true;
 			}
 		}
@@ -370,34 +372,10 @@ void MSWP8Cap::setConfiguration(const MSVideoConfiguration *vconf)
 		mVConf.required_bitrate = mVConf.bitrate_limit;
 
 	if (mIsActivated) {
-		// Set the video size
-		IAsyncAction^ action = nullptr;
-		Size dimensions;
-		dimensions.Width = (float)mVConf.vsize.width;
-		dimensions.Height = (float)mVConf.vsize.height;
-		action = mVideoDevice->SetCaptureResolutionAsync(dimensions);
-		action->Completed = ref new AsyncActionCompletedHandler([this] (IAsyncAction^ action, Windows::Foundation::AsyncStatus status) {
-			if (status == Windows::Foundation::AsyncStatus::Completed) {
-				ms_debug("[MSWP8Cap] AsyncAction completed");
-			}
-			else if (status == Windows::Foundation::AsyncStatus::Canceled) {
-				ms_warning("[MSWP8Cap] AsyncAction has been canceled");
-			}
-			else if (status == Windows::Foundation::AsyncStatus::Error) {
-				ms_error("[MSWP8Cap] AsyncAction failed");
-			}
-		});
-
-		// Set the frame rate
-		uint32 value = (uint32)mVConf.fps;
-		CameraCapturePropertyRange^ range = mVideoDevice->GetSupportedPropertyRange(mCameraLocation, KnownCameraAudioVideoProperties::VideoFrameRate);
-		uint32_t min = safe_cast<uint32>(range->Min);
-		uint32_t max = safe_cast<uint32>(range->Max);
-		if (value < min) value = min;
-		else if (value > max) value = max;
-		mVideoDevice->SetProperty(KnownCameraAudioVideoProperties::VideoFrameRate, value);
-		value = safe_cast<uint32>(mVideoDevice->GetProperty(KnownCameraAudioVideoProperties::VideoFrameRate));
+		applyVideoSize();
 	}
+
+	applyFps();
 }
 
 void MSWP8Cap::setDeviceOrientation(int degrees)
@@ -413,6 +391,41 @@ void MSWP8Cap::requestIdrFrame()
 	}
 }
 
+
+void MSWP8Cap::applyFps()
+{
+	// WARNING: Do not change the FPS while the capture is active. The SetProperty call does not return in this case!
+	if (mVideoDevice && !mIsActivated) {
+		uint32 value = (uint32)mVConf.fps;
+		CameraCapturePropertyRange^ range = mVideoDevice->GetSupportedPropertyRange(mCameraLocation, KnownCameraAudioVideoProperties::VideoFrameRate);
+		uint32 min = safe_cast<uint32>(range->Min);
+		uint32 max = safe_cast<uint32>(range->Max);
+		if (value < min) value = min;
+		else if (value > max) value = max;
+		mVideoDevice->SetProperty(KnownCameraAudioVideoProperties::VideoFrameRate, value);
+		value = safe_cast<uint32>(mVideoDevice->GetProperty(KnownCameraAudioVideoProperties::VideoFrameRate));
+	}
+}
+
+void MSWP8Cap::applyVideoSize()
+{
+	IAsyncAction^ action = nullptr;
+	Size dimensions;
+	dimensions.Width = (float)mVConf.vsize.width;
+	dimensions.Height = (float)mVConf.vsize.height;
+	action = mVideoDevice->SetCaptureResolutionAsync(dimensions);
+	action->Completed = ref new AsyncActionCompletedHandler([this] (IAsyncAction^ action, Windows::Foundation::AsyncStatus status) {
+		if (status == Windows::Foundation::AsyncStatus::Completed) {
+			ms_debug("[MSWP8Cap] AsyncAction completed");
+		}
+		else if (status == Windows::Foundation::AsyncStatus::Canceled) {
+			ms_warning("[MSWP8Cap] AsyncAction has been canceled");
+		}
+		else if (status == Windows::Foundation::AsyncStatus::Error) {
+			ms_error("[MSWP8Cap] AsyncAction failed");
+		}
+	});
+}
 
 void MSWP8Cap::bitstreamToMsgb(uint8_t *encoded_buf, size_t size, MSQueue *nalus) {
 	size_t idx = 0;

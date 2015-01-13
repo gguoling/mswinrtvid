@@ -68,6 +68,8 @@ namespace mswp8vid
 			static void detectCameras(MSWebCamManager *manager, MSWebCamDesc *desc);
 
 		private:
+			void applyFps();
+			void applyVideoSize();
 			void bitstreamToMsgb(uint8_t *encoded_buf, size_t size, MSQueue *nalus);
 			bool selectBestVideoSize();
 			void configure();
