@@ -154,6 +154,17 @@ namespace Mediastreamer2
                 });
             }
 
+            public void FirstFrameReceived()
+            {
+                Deployment.Current.Dispatcher.BeginInvoke(() =>
+                {
+                    if (this.streamSource != null)
+                    {
+                        this.streamSource.FirstFrameReceived();
+                    }
+                });
+            }
+
             #endregion
 
             public static Uri FrontFacingCameraStreamUri = new Uri("ms-media-stream-id:camera-FrontFacing");

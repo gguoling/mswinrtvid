@@ -53,6 +53,8 @@ namespace mswp8vid
 			void OnSampleAvailable(ULONGLONG hnsPresentationTime, ULONGLONG hnsSampleDuration, DWORD cbSample, BYTE* pSample);
 
 			void setCameraLocation(uint32 location);
+			MSPixFmt getPixFmt() { return mPixFmt; }
+			void setPixFmt(MSPixFmt pixFmt) { mPixFmt = pixFmt; }
 			float getFps() { return mVConf.fps; }
 			void setFps(float fps);
 			int getBitrate() { return mBitrate; }
@@ -91,6 +93,7 @@ namespace mswp8vid
 			int mDeviceOrientation;
 			MSVideoStarter mStarter;
 			MSVideoConfiguration mVConf;
+			MSPixFmt mPixFmt;
 			HANDLE mActivationCompleted;
 			HANDLE mStartCompleted;
 			HANDLE mStopCompleted;

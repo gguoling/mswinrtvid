@@ -85,9 +85,16 @@ static int ms_wp8cap_set_fps(MSFilter *f, void *arg) {
 }
 
 static int ms_wp8cap_get_pix_fmt(MSFilter *f, void *arg) {
-	MS_UNUSED(f);
+	MSWP8Cap *r = static_cast<MSWP8Cap *>(f->data);
 	MSPixFmt *fmt = static_cast<MSPixFmt *>(arg);
-	*fmt = MS_H264;
+	*fmt = r->getPixFmt();
+	return 0;
+}
+
+static int ms_wp8cap_set_pix_fmt(MSFilter *f, void *arg) {
+	MSWP8Cap *r = static_cast<MSWP8Cap *>(f->data);
+	MSPixFmt *fmt = static_cast<MSPixFmt *>(arg);
+	r->setPixFmt(*fmt);
 	return 0;
 }
 
@@ -154,6 +161,7 @@ static MSFilterMethod ms_wp8cap_read_methods[] = {
 	{	MS_FILTER_GET_FPS,			ms_wp8cap_get_fps		},
 	{	MS_FILTER_SET_FPS,			ms_wp8cap_set_fps		},
 	{	MS_FILTER_GET_PIX_FMT,		ms_wp8cap_get_pix_fmt	},
+	{	MS_FILTER_SET_PIX_FMT,		ms_wp8cap_set_pix_fmt	},
 	{	MS_FILTER_GET_VIDEO_SIZE,	ms_wp8cap_get_vsize		},
 	{	MS_FILTER_SET_VIDEO_SIZE,	ms_wp8cap_set_vsize		},
 	{	MS_FILTER_GET_BITRATE,		ms_wp8cap_get_bitrate	},
@@ -173,7 +181,7 @@ static MSFilterMethod ms_wp8cap_read_methods[] = {
  *****************************************************************************/
 
 #define MS_WP8CAP_READ_ID			MS_FILTER_PLUGIN_ID
-#define MS_WP8CAP_READ_NAME			"MSWP8CapRead"
+#define MS_WP8CAP_READ_NAME			"MSWP8Cap"
 #define MS_WP8CAP_READ_DESCRIPTION	"Windows Phone 8 video capture"
 #define MS_WP8CAP_READ_CATEGORY		MS_FILTER_ENCODING_CAPTURER
 #define MS_WP8CAP_READ_ENC_FMT		"H264"
@@ -299,9 +307,23 @@ static void ms_wp8dis_uninit(MSFilter *f) {
  * Methods to configure the Windows Phone 8 video display filter              *
  *****************************************************************************/
 
-static int ms_wp8dis_get_video_size(MSFilter *f, void *arg) {
+static int ms_wp8dis_get_vsize(MSFilter *f, void *arg) {
 	MSWP8Dis *w = static_cast<MSWP8Dis *>(f->data);
 	*((MSVideoSize *)arg) = w->getVideoSize();
+	return 0;
+}
+
+static int ms_wp8dis_set_vsize(MSFilter *f, void *arg) {
+	MSWP8Dis *w = static_cast<MSWP8Dis *>(f->data);
+	MSVideoSize *vs = static_cast<MSVideoSize *>(arg);
+	w->setVideoSize(*vs);
+	return 0;
+}
+
+static int ms_wp8dis_set_pix_fmt(MSFilter *f, void *arg) {
+	MSWP8Dis *w = static_cast<MSWP8Dis *>(f->data);
+	MSPixFmt *fmt = static_cast<MSPixFmt *>(arg);
+	w->setPixFmt(*fmt);
 	return 0;
 }
 
@@ -333,7 +355,9 @@ static int ms_wp8dis_set_native_window_id(MSFilter *f, void *arg) {
 }
 
 static MSFilterMethod ms_wp8dis_methods[] = {
-	{	MS_FILTER_GET_VIDEO_SIZE,				ms_wp8dis_get_video_size		},
+	{	MS_FILTER_GET_VIDEO_SIZE,				ms_wp8dis_get_vsize				},
+	{	MS_FILTER_SET_VIDEO_SIZE,				ms_wp8dis_set_vsize				},
+	{	MS_FILTER_SET_PIX_FMT,					ms_wp8dis_set_pix_fmt			},
 	{	MS_VIDEO_DECODER_SUPPORT_RENDERING,		ms_wp8dis_support_rendering		},
 	{	MS_VIDEO_DISPLAY_SET_NATIVE_WINDOW_ID,	ms_wp8dis_set_native_window_id	},
 	{	0,										NULL							}

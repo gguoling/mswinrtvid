@@ -48,6 +48,8 @@ namespace mswp8vid
 		void stop();
 		int feed(MSFilter *f);
 		MSVideoSize getVideoSize();
+		void setVideoSize(MSVideoSize vs);
+		void setPixFmt(MSPixFmt pix_fmt) { mPixFmt = pix_fmt; }
 		Mediastreamer2::WP8Video::IVideoRenderer^ getVideoRenderer();
 		void setVideoRenderer(Mediastreamer2::WP8Video::IVideoRenderer^ renderer);
 
@@ -67,10 +69,12 @@ namespace mswp8vid
 		int mWidth;
 		int mHeight;
 		Rfc3984Context *mRfc3984Unpacker;
+		MSPixFmt mPixFmt;
 		int mBitstreamSize;
 		uint8_t *mBitstream;
 		mblk_t *mSPS;
 		mblk_t *mPPS;
 		Mediastreamer2::WP8Video::IVideoRenderer^ mRenderer;
+		bool mFirstFrameReceived;
 	};
 }

@@ -129,7 +129,10 @@ namespace Mediastreamer2
                 this.format = format;
                 this.frameWidth = width;
                 this.frameHeight = height;
+            }
 
+            public void FirstFrameReceived()
+            {
                 if (this.openAsyncPending)
                 {
                     ReportOpenAsyncCompleted();

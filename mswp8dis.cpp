@@ -70,14 +70,13 @@ bool MSWP8Dis::smInstantiated = false;
 
 MSWP8Dis::MSWP8Dis()
 	: mIsInitialized(false), mIsActivated(false), mIsStarted(false), mWidth(MS_VIDEO_SIZE_CIF_W), mHeight(MS_VIDEO_SIZE_CIF_H),
-	mRfc3984Unpacker(nullptr), mBitstreamSize(65536), mSPS(nullptr), mPPS(nullptr), mRenderer(nullptr)
+	mRfc3984Unpacker(nullptr), mBitstreamSize(65536), mBitstream(nullptr), mSPS(nullptr), mPPS(nullptr), mRenderer(nullptr), mFirstFrameReceived(false)
 {
 	if (smInstantiated) {
 		ms_error("[MSWP8Dis] A video display filter is already instantiated. A second one can not be created.");
 		return;
 	}
 
-	mBitstream = (uint8_t *)ms_malloc0(mBitstreamSize);
 	mIsInitialized = true;
 	smInstantiated = true;
 }
@@ -85,7 +84,6 @@ MSWP8Dis::MSWP8Dis()
 MSWP8Dis::~MSWP8Dis()
 {
 	stop();
-	ms_free(mBitstream);
 	smInstantiated = false;
 }
 
@@ -93,7 +91,7 @@ int MSWP8Dis::activate()
 {
 	if (!mIsInitialized) return -1;
 
-	mRfc3984Unpacker = rfc3984_new();
+	if (mPixFmt == MS_H264) mRfc3984Unpacker = rfc3984_new();
 	mIsActivated = true;
 	return 0;
 }
@@ -112,6 +110,10 @@ int MSWP8Dis::deactivate()
 		freemsg(mPPS);
 		mPPS = nullptr;
 	}
+	if (mBitstream) {
+		ms_free(mBitstream);
+		mBitstream = nullptr;
+	}
 	mIsActivated = false;
 	return 0;
 }
@@ -120,9 +122,13 @@ void MSWP8Dis::start()
 {
 	if (!mIsStarted && mIsActivated) {
 		mIsStarted = true;
-		Platform::String^ format = ref new Platform::String(L"H264");
+		Platform::String^ format;
+		if (mPixFmt == MS_H264)
+			format = ref new Platform::String(L"H264");
+		else
+			format = ref new Platform::String(L"YV12");
 		if (mRenderer != nullptr) {
-			ms_message("[MSWP8Dis] Start renderer %s - %dx%d", "H264", mWidth, mHeight);
+			ms_message("[MSWP8Dis] Start renderer %s - %dx%d", ms_pix_fmt_to_string(mPixFmt), mWidth, mHeight);
 			mRenderer->Start(format, mWidth, mHeight);
 		}
 	}
@@ -141,29 +147,54 @@ void MSWP8Dis::stop()
 
 int MSWP8Dis::feed(MSFilter *f)
 {
-	mblk_t *m;
-	MSQueue nalus;
+	mblk_t *im;
 
 	if (mIsStarted) {
-		ms_queue_init(&nalus);
-		while ((m = ms_queue_get(f->inputs[0])) != NULL) {
-			rfc3984_unpack(mRfc3984Unpacker, m, &nalus);
-			if (!ms_queue_empty(&nalus)) {
-				bool need_reinit = false;
-				int size = nalusToFrame(&nalus, &need_reinit);
-				if (need_reinit) {
-					Platform::String^ format = ref new Platform::String(L"H264");
-					if (mRenderer != nullptr) {
-						ms_message("[MSWP8Dis] Change renderer format: %s - %dx%d", "H264", mWidth, mHeight);
-						mRenderer->ChangeFormat(format, mWidth, mHeight);
+		while ((im = ms_queue_get(f->inputs[0])) != NULL) {
+			int size = 0;
+			if (mPixFmt == MS_H264) {
+				MSQueue nalus;
+				ms_queue_init(&nalus);
+				rfc3984_unpack(mRfc3984Unpacker, im, &nalus);
+				if (!ms_queue_empty(&nalus)) {
+					bool need_reinit = false;
+					size = nalusToFrame(&nalus, &need_reinit);
+					if (need_reinit) {
+						if (mRenderer != nullptr) {
+							Platform::String^ format = ref new Platform::String(L"H264");
+							ms_message("[MSWP8Dis] Change renderer format: %s - %dx%d", "H264", mWidth, mHeight);
+							mRenderer->ChangeFormat(format, mWidth, mHeight);
+						}
 					}
 				}
-				if ((size > 0) && (mRenderer != nullptr)) {
-					if (mRenderer->Dispatcher != nullptr) {
-						ComPtr<VideoBuffer> spVideoBuffer = NULL;
-						MakeAndInitialize<VideoBuffer>(&spVideoBuffer, (BYTE *)mBitstream, size);
-						mRenderer->Dispatcher->OnSampleReceived(VideoBuffer::GetIBuffer(spVideoBuffer), f->ticker->time * 10000LL);
-					}
+			}
+			else {
+				MSPicture buf;
+				ms_yuv_buf_init_from_mblk(&buf, im);
+				size = (buf.w * buf.h * 3) / 2;
+				if (!mBitstream) mBitstream = (uint8_t *)ms_malloc(size);
+				int ysize = buf.w * buf.h;
+				int usize = ysize / 4;
+				memcpy(mBitstream, buf.planes[0], ysize);
+				memcpy(mBitstream + ysize, buf.planes[2], usize);
+				memcpy(mBitstream + ysize + usize, buf.planes[1], usize);
+				freemsg(im);
+				if ((mRenderer != nullptr) && ((buf.w != mWidth) || (buf.h != mHeight))) {
+					mWidth = buf.w;
+					mHeight = buf.h;
+					Platform::String^ format = ref new Platform::String(L"YV12");
+					mRenderer->ChangeFormat(format, mWidth, mHeight);
+				}
+			}
+			if ((size > 0) && (mRenderer != nullptr)) {
+				if (!mFirstFrameReceived) {
+					mFirstFrameReceived = true;
+					mRenderer->FirstFrameReceived();
+				}
+				if (mRenderer->Dispatcher != nullptr) {
+					ComPtr<VideoBuffer> spVideoBuffer = NULL;
+					MakeAndInitialize<VideoBuffer>(&spVideoBuffer, mBitstream, size);
+					mRenderer->Dispatcher->OnSampleReceived(VideoBuffer::GetIBuffer(spVideoBuffer), f->ticker->time * 10000LL);
 				}
 			}
 		}
@@ -188,6 +219,12 @@ MSVideoSize MSWP8Dis::getVideoSize()
 	return vs;
 }
 
+void MSWP8Dis::setVideoSize(MSVideoSize vs)
+{
+	mWidth = vs.width;
+	mHeight = vs.height;
+}
+
 Mediastreamer2::WP8Video::IVideoRenderer^ MSWP8Dis::getVideoRenderer()
 {
 	return mRenderer;
@@ -201,11 +238,13 @@ void MSWP8Dis::setVideoRenderer(IVideoRenderer^ renderer)
 int MSWP8Dis::nalusToFrame(MSQueue *nalus, bool *new_sps_pps)
 {
 	mblk_t *im;
-	uint8_t *dst = mBitstream, *src, *end;
+	uint8_t *dst, *src, *end;
 	int nal_len;
 	bool start_picture = true;
 	uint8_t nalu_type;
 
+	if (!mBitstream) mBitstream = (uint8_t *)ms_malloc(mBitstreamSize);
+	dst = mBitstream;
 	*new_sps_pps = false;
 	end = mBitstream + mBitstreamSize;
 

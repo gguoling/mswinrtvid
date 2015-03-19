@@ -53,7 +53,7 @@ static const MSVideoConfiguration h264_conf_list[] = {
 MSWP8Cap::MSWP8Cap()
 	: mIsInitialized(false), mIsActivated(false), mIsStarted(false),
 	mRfc3984Packer(nullptr), mPackerMode(1), mStartTime(0), mSamplesCount(0), mBitrate(defaultBitrate),
-	mCameraSensorRotation(0), mDeviceOrientation(0), mCameraLocation(CameraSensorLocation::Front),
+	mCameraSensorRotation(0), mDeviceOrientation(0), mPixFmt(MS_YUV420P), mCameraLocation(CameraSensorLocation::Front),
 	mVideoDevice(nullptr)
 {
 	if (smInstantiated) {
@@ -259,23 +259,25 @@ void MSWP8Cap::stop()
 
 int MSWP8Cap::feed(MSFilter *f)
 {
-	mblk_t *m;
-	MSQueue nalus;
-	uint32_t timestamp;
+	mblk_t *im;
 
 	ms_mutex_lock(&mMutex);
 	// Free samples that have already been sent
-	while ((m = ms_queue_get(&mSampleToFreeQueue)) != NULL) {
-		freemsg(m);
+	while ((im = ms_queue_get(&mSampleToFreeQueue)) != NULL) {
+		freemsg(im);
 	}
 	// Send queued samples
-	while ((m = ms_queue_get(&mSampleToSendQueue)) != NULL) {
-		ms_queue_init(&nalus);
-		timestamp = mblk_get_timestamp_info(m);
-		bitstreamToMsgb(m->b_rptr, m->b_wptr - m->b_rptr, &nalus);
-		rfc3984_pack(mRfc3984Packer, &nalus, f->outputs[0], timestamp);
-		ms_queue_put(&mSampleToFreeQueue, m);
-
+	while ((im = ms_queue_get(&mSampleToSendQueue)) != NULL) {
+		if (mPixFmt == MS_H264) {
+			MSQueue nalus;
+			ms_queue_init(&nalus);
+			uint32_t timestamp = mblk_get_timestamp_info(im);
+			bitstreamToMsgb(im->b_rptr, im->b_wptr - im->b_rptr, &nalus);
+			rfc3984_pack(mRfc3984Packer, &nalus, f->outputs[0], timestamp);
+			ms_queue_put(&mSampleToFreeQueue, im);
+		} else {
+			ms_queue_put(f->outputs[0], im);
+		}
 		
 		if (mSamplesCount == 0) {
 			ms_video_starter_first_frame(&mStarter, f->ticker->ticks);
@@ -300,11 +302,23 @@ void MSWP8Cap::OnSampleAvailable(ULONGLONG hnsPresentationTime, ULONGLONG hnsSam
 	MS_UNUSED(hnsSampleDuration);
 	mblk_t *m;
 	uint32_t timestamp = (uint32_t)((hnsPresentationTime / 10000LL) * 90LL);
-	BYTE* pMem = new BYTE[cbSample];
 
-	memcpy(pMem, pSample, cbSample);
-	m = esballoc(pMem, cbSample, 0, freeSample);
-	m->b_wptr += cbSample;
+	if (mPixFmt == MS_H264) {
+		BYTE* pMem = new BYTE[cbSample];
+		memcpy(pMem, pSample, cbSample);
+		m = esballoc(pMem, cbSample, 0, freeSample);
+		m->b_wptr += cbSample;
+	} else {
+		int w = mVConf.vsize.width;
+		int h = mVConf.vsize.height;
+		if (((mCameraSensorRotation + mDeviceOrientation) % 180) != 0) {
+			w = mVConf.vsize.height;
+			h = mVConf.vsize.width;
+		}
+		uint8_t *y = (uint8_t *)pSample;
+		uint8_t *cbcr = (uint8_t *)(pSample + w * h);
+		m = copy_ycbcrbiplanar_to_true_yuv_with_rotation(y, cbcr, 0, w, h, w, w, TRUE);
+	}
 	mblk_set_timestamp_info(m, timestamp);
 
 	ms_mutex_lock(&mMutex);
@@ -386,8 +400,10 @@ void MSWP8Cap::setDeviceOrientation(int degrees)
 void MSWP8Cap::requestIdrFrame()
 {
 	if (mIsStarted) {
-		Platform::Boolean value = true;
-		mVideoDevice->SetProperty(KnownCameraAudioVideoProperties::H264RequestIdrFrame, value);
+		if (mPixFmt == MS_H264) {
+			Platform::Boolean value = true;
+			mVideoDevice->SetProperty(KnownCameraAudioVideoProperties::H264RequestIdrFrame, value);
+		}
 	}
 }
 
@@ -521,43 +537,52 @@ void MSWP8Cap::configure()
 	// Do not mute audio while recording video
 	mVideoDevice->SetProperty(KnownCameraAudioVideoProperties::UnmuteAudioWhileRecording, unMuteAudio);
 
-	// Use the H264 encoding format
-	mVideoDevice->VideoEncodingFormat = CameraCaptureVideoFormat::H264;
+	if (mPixFmt == MS_H264) {
+		// Use the H264 encoding format
+		mVideoDevice->VideoEncodingFormat = CameraCaptureVideoFormat::H264;
 
-	// Use the H264 baseline profile
-	values = mVideoDevice->GetSupportedPropertyValues(mCameraLocation, KnownCameraAudioVideoProperties::H264EncodingProfile);
-	valuesIterator = values->First();
-	while (valuesIterator->HasCurrent) {
-		H264EncoderProfile profile = (H264EncoderProfile)safe_cast<int>(valuesIterator->Current);
-		if (profile == H264EncoderProfile::Baseline) {
-			supportH264BaselineProfile = true;
+		// Use the H264 baseline profile
+		values = mVideoDevice->GetSupportedPropertyValues(mCameraLocation, KnownCameraAudioVideoProperties::H264EncodingProfile);
+		valuesIterator = values->First();
+		while (valuesIterator->HasCurrent) {
+			H264EncoderProfile profile = (H264EncoderProfile)safe_cast<int>(valuesIterator->Current);
+			if (profile == H264EncoderProfile::Baseline) {
+				supportH264BaselineProfile = true;
+			}
+			valuesIterator->MoveNext();
 		}
-		valuesIterator->MoveNext();
-	}
-	if (supportH264BaselineProfile) {
-		try {
-			mVideoDevice->SetProperty(KnownCameraAudioVideoProperties::H264EncodingProfile, H264EncoderProfile::Baseline);
-		} catch (Platform::COMException^ e) {
-			if (e->HResult == E_NOTIMPL) {
-				ms_warning("[MSWP8Cap] This device does not support setting the H264 encoding profile");
+		if (supportH264BaselineProfile) {
+			try {
+				mVideoDevice->SetProperty(KnownCameraAudioVideoProperties::H264EncodingProfile, H264EncoderProfile::Baseline);
+			}
+			catch (Platform::COMException^ e) {
+				if (e->HResult == E_NOTIMPL) {
+					ms_warning("[MSWP8Cap] This device does not support setting the H264 encoding profile");
+				}
 			}
 		}
-	} else {
-		ms_warning("[MSWP8Cap] This camera does not support H264 baseline profile");
-	}
-	try {
-		mVideoDevice->SetProperty(KnownCameraAudioVideoProperties::H264EncodingLevel, H264EncoderLevel::Level1_3);
-	} catch (Platform::COMException^ e) {
-		if (e->HResult == E_NOTIMPL) {
-			ms_warning("[MSWP8Cap] This device does not support setting the H264 encoding level");
+		else {
+			ms_warning("[MSWP8Cap] This camera does not support H264 baseline profile");
+		}
+		try {
+			mVideoDevice->SetProperty(KnownCameraAudioVideoProperties::H264EncodingLevel, H264EncoderLevel::Level1_3);
+		}
+		catch (Platform::COMException^ e) {
+			if (e->HResult == E_NOTIMPL) {
+				ms_warning("[MSWP8Cap] This device does not support setting the H264 encoding level");
+			}
+		}
+		try {
+			mVideoDevice->SetProperty(KnownCameraAudioVideoProperties::H264QuantizationParameter, 32);
+		}
+		catch (Platform::COMException^ e) {
+			if (e->HResult == E_NOTIMPL) {
+				ms_warning("[MSWP8Cap] This device does not support setting the H264 quantization parameter");
+			}
 		}
 	}
-	try {
-		mVideoDevice->SetProperty(KnownCameraAudioVideoProperties::H264QuantizationParameter, 32);
-	} catch (Platform::COMException^ e) {
-		if (e->HResult == E_NOTIMPL) {
-			ms_warning("[MSWP8Cap] This device does not support setting the H264 quantization parameter");
-		}
+	else {
+		mVideoDevice->VideoEncodingFormat = CameraCaptureVideoFormat::Nv12;
 	}
 }
 

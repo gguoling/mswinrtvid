@@ -36,6 +36,7 @@ namespace Mediastreamer2
 			void Start(Platform::String^ format, int width, int height);
 			void Stop();
 			void ChangeFormat(Platform::String^ format, int width, int height);
+			void FirstFrameReceived();
 			property IVideoDispatcher^ Dispatcher { IVideoDispatcher^ get(); };
 		};
 	}
