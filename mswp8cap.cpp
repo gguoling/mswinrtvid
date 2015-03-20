@@ -311,7 +311,7 @@ void MSWP8Cap::OnSampleAvailable(ULONGLONG hnsPresentationTime, ULONGLONG hnsSam
 	} else {
 		int w = mVConf.vsize.width;
 		int h = mVConf.vsize.height;
-		if (((mCameraSensorRotation + mDeviceOrientation) % 180) != 0) {
+		if ((mDeviceOrientation % 180) == 0) {
 			w = mVConf.vsize.height;
 			h = mVConf.vsize.width;
 		}
@@ -353,7 +353,7 @@ void MSWP8Cap::setBitrate(int bitrate)
 MSVideoSize MSWP8Cap::getVideoSize()
 {
 	MSVideoSize vs;
-	if (((mCameraSensorRotation + mDeviceOrientation) % 180) != 0) {
+	if ((mDeviceOrientation % 180) == 0) {
 		vs.width = mVConf.vsize.height;
 		vs.height = mVConf.vsize.width;
 	} else {
