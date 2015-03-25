@@ -32,7 +32,6 @@ include_directories(
 )
 
 file(GLOB SOURCE_FILES "*.h" "*.cpp")
-set_source_files_properties(${SOURCE_FILES} PROPERTIES COMPILE_FLAGS "/ZW /AI\$(WindowsSDK_MetadataPath)")
 set(LIBS ${MEDIASTREAMER2_LIBRARIES} ws2_32)
 
 if(ENABLE_STATIC)
@@ -48,6 +47,8 @@ else()
 	endif()
 	set_target_properties(mswp8vid PROPERTIES PREFIX "lib")
 endif()
+target_compile_options(mswp8vid PRIVATE "/ZW" "/AI\$(WindowsSDK_MetadataPath)")
+set_target_properties(mswp8vid PROPERTIES LINK_FLAGS "/WINMD /WINMDFILE:${CMAKE_CURRENT_BINARY_DIR}/Mediastreamer2.WP8Video.winmd")
 target_link_libraries(mswp8vid ${LIBS})
 
 install(TARGETS mswp8vid
@@ -56,3 +57,5 @@ install(TARGETS mswp8vid
 	ARCHIVE DESTINATION lib/mediastreamer/plugins
 	PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
 )
+
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/Mediastreamer2.WP8Video.winmd" DESTINATION lib/mediastreamer/plugins)
