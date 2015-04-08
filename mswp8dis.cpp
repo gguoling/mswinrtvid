@@ -138,6 +138,7 @@ void MSWP8Dis::stop()
 {
 	if (mIsStarted) {
 		mIsStarted = false;
+		mFirstFrameReceived = false;
 		if (mRenderer != nullptr) {
 			ms_message("[MSWP8Dis] Stop renderer");
 			mRenderer->Stop();
