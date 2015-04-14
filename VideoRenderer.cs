@@ -101,13 +101,13 @@ namespace Mediastreamer2
 
             public void Start(String format, int width, int height)
             {
-                if (this.isRendering)
-                {
-                    return;
-                }
-
                 Deployment.Current.Dispatcher.BeginInvoke(() =>
                 {
+                    if (this.isRendering)
+                    {
+                        return;
+                    }
+
                     try
                     {
                         if (this.mediastreamer == null)

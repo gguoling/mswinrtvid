@@ -183,8 +183,14 @@ int MSWP8Dis::feed(MSFilter *f)
 				if ((mRenderer != nullptr) && ((buf.w != mWidth) || (buf.h != mHeight))) {
 					mWidth = buf.w;
 					mHeight = buf.h;
-					Platform::String^ format = ref new Platform::String(L"YV12");
-					mRenderer->ChangeFormat(format, mWidth, mHeight);
+					if (mFirstFrameReceived) {
+						stop();
+						start();
+					}
+					else {
+						Platform::String^ format = ref new Platform::String(L"YV12");
+						mRenderer->ChangeFormat(format, mWidth, mHeight);
+					}
 				}
 			}
 			if ((size > 0) && (mRenderer != nullptr)) {
