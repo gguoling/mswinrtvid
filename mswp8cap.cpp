@@ -591,7 +591,8 @@ void MSWP8Cap::detectCameras(MSWebCamManager *manager, MSWebCamDesc *desc)
 {
 	Collections::IVectorView<CameraSensorLocation> ^availableSensorLocations;
 	Collections::IIterator<CameraSensorLocation> ^availableSensorLocationsIterator;
-	int count = 0;
+	MSList *camlist = NULL;
+	int i;
 
 	availableSensorLocations = AudioVideoCaptureDevice::AvailableSensorLocations;
 	availableSensorLocationsIterator = availableSensorLocations->First();
@@ -603,17 +604,20 @@ void MSWP8Cap::detectCameras(MSWebCamManager *manager, MSWebCamDesc *desc)
 		cam->name = ms_strdup(buffer);
 		cam->data = (void *)availableSensorLocationsIterator->Current;
 		if (strcmp(cam->name, "Front") == 0) {
-			ms_web_cam_manager_prepend_cam(manager, cam);
+			camlist = ms_list_append(camlist, cam);
 		} else {
-			ms_web_cam_manager_add_cam(manager, cam);
+			camlist = ms_list_prepend(camlist, cam);
 		}
 		availableSensorLocationsIterator->MoveNext();
-		count++;
 	}
 
-	if (count == 0) {
+	if (ms_list_size(camlist) == 0) {
 		ms_warning("[MSWP8Cap] This device does not have a camera");
 	}
+	for (i = 0; i < ms_list_size(camlist); i++) {
+		ms_web_cam_manager_prepend_cam(manager, (MSWebCam *)ms_list_nth_data(camlist, i));
+	}
+	ms_list_free(camlist);
 }
 
 void MSWP8Cap::printProperties()
