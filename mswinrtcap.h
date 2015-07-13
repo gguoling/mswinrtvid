@@ -1,5 +1,5 @@
 /*
-mswp8cap.h
+mswinrtcap.h
 
 mediastreamer2 library - modular sound and video processing and streaming
 Windows Audio Session API sound card plugin for mediastreamer2
@@ -24,24 +24,32 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #pragma once
 
 
-#include "windows.h"
+#include <mediastreamer2/mscommon.h>
+#include <mediastreamer2/msfilter.h>
+#include <mediastreamer2/msticker.h>
+#include <mediastreamer2/msvideo.h>
+#include <mediastreamer2/mswebcam.h>
+#include <mediastreamer2/rfc3984.h>
+#include <mediastreamer2/videostarter.h>
+
+#ifdef MS2_WINDOWS_UNIVERSAL
+#include <wrl\implements.h>
+#endif
+#ifdef MS2_WINDOWS_PHONE
 #include "implements.h"
 #include <Windows.Phone.Media.Capture.h>
 #include <Windows.Phone.Media.Capture.Native.h>
-#include "mediastreamer2/msfilter.h"
-#include "mediastreamer2/mswebcam.h"
-#include "mediastreamer2/rfc3984.h"
-#include "mediastreamer2/videostarter.h"
+#endif
 
 
-namespace mswp8vid
+namespace mswinrtvid
 {
 		class SampleSink;
 
-		class MSWP8Cap {
+		class MSWinRTCap {
 		public:
-			MSWP8Cap();
-			virtual ~MSWP8Cap();
+			MSWinRTCap();
+			virtual ~MSWinRTCap();
 
 			int activate();
 			int deactivate();
@@ -85,6 +93,7 @@ namespace mswp8vid
 			MSQueue mSampleToFreeQueue;
 			ms_mutex_t mMutex;
 			Rfc3984Context *mRfc3984Packer;
+			MSYuvBufAllocator *mAllocator;
 			int mPackerMode;
 			uint64_t mStartTime;
 			int mSamplesCount;
@@ -97,17 +106,22 @@ namespace mswp8vid
 			HANDLE mActivationCompleted;
 			HANDLE mStartCompleted;
 			HANDLE mStopCompleted;
+#ifdef MS2_WINDOWS_PHONE
 			Windows::Phone::Media::Capture::CameraSensorLocation mCameraLocation;
 			Windows::Phone::Media::Capture::AudioVideoCaptureDevice^ mVideoDevice;
+#endif
 			SampleSink *mVideoSink;
+#ifdef MS2_WINDOWS_PHONE
 			IAudioVideoCaptureDeviceNative* mNativeVideoDevice;
+#endif
 		};
 
+#ifdef MS2_WINDOWS_PHONE
 		class SampleSink
 			: public Microsoft::WRL::RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::RuntimeClassType::ClassicCom>, ICameraCaptureSampleSink>
 		{
 		public:
-			STDMETHODIMP RuntimeClassInitialize(MSWP8Cap *reader) {
+			STDMETHODIMP RuntimeClassInitialize(MSWinRTCap *reader) {
 				m_dwSampleCount = 0;
 				m_reader = reader;
 				return S_OK;
@@ -126,6 +140,7 @@ namespace mswp8vid
 
 		private:
 			DWORD m_dwSampleCount;
-			MSWP8Cap *m_reader;
+			MSWinRTCap *m_reader;
 		};
+#endif
 }

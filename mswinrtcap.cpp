@@ -1,5 +1,5 @@
 /*
-mswp8cap.cpp
+mswinrtcap.cpp
 
 mediastreamer2 library - modular sound and video processing and streaming
 Windows Audio Session API sound card plugin for mediastreamer2
@@ -21,22 +21,21 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 
 
-#include "mediastreamer2/mscommon.h"
-#include "mediastreamer2/msticker.h"
-#include "mediastreamer2/msvideo.h"
-#include "mswp8cap.h"
+#include "mswinrtcap.h"
 
 using namespace Microsoft::WRL;
 using namespace Windows::Foundation;
+#ifdef MS2_WINDOWS_PHONE
 using namespace Windows::Phone::Media::Capture;
-using namespace mswp8vid;
+#endif
+using namespace mswinrtvid;
 
 
 static const float defaultFps = 15.0f;
 static const int defaultBitrate = 384000;
 
 
-bool MSWP8Cap::smInstantiated = false;
+bool MSWinRTCap::smInstantiated = false;
 
 
 #define MS_H264_CONF(required_bitrate, bitrate_limit, resolution, fps, ncpus) \
@@ -50,35 +49,38 @@ static const MSVideoConfiguration h264_conf_list[] = {
 };
 
 
-MSWP8Cap::MSWP8Cap()
+MSWinRTCap::MSWinRTCap()
 	: mIsInitialized(false), mIsActivated(false), mIsStarted(false),
-	mRfc3984Packer(nullptr), mPackerMode(1), mStartTime(0), mSamplesCount(0), mBitrate(defaultBitrate),
-	mCameraSensorRotation(0), mDeviceOrientation(0), mPixFmt(MS_YUV420P), mCameraLocation(CameraSensorLocation::Front),
-	mVideoDevice(nullptr)
+	mRfc3984Packer(NULL), mAllocator(NULL), mPackerMode(1), mStartTime(0), mSamplesCount(0), mBitrate(defaultBitrate),
+	mCameraSensorRotation(0), mDeviceOrientation(0), mPixFmt(MS_YUV420P)
+#ifdef MS2_WINDOWS_PHONE
+	, mCameraLocation(CameraSensorLocation::Front),	mVideoDevice(nullptr)
+#endif
 {
 	if (smInstantiated) {
-		ms_error("[MSWP8Cap] An video capture filter is already instantiated. A second one can not be created.");
+		ms_error("[MSWinRTCap] An video capture filter is already instantiated. A second one can not be created.");
 		return;
 	}
 
 	ms_mutex_init(&mMutex, NULL);
 	ms_queue_init(&mSampleToSendQueue);
 	ms_queue_init(&mSampleToFreeQueue);
+	mAllocator = ms_yuv_buf_allocator_new();
 	mVConf = ms_video_find_best_configuration_for_bitrate(h264_conf_list, mBitrate, ms_get_cpu_count());
 
-	mActivationCompleted = CreateEventEx(NULL, L"Local\\MSWP8CapActivation", 0, EVENT_ALL_ACCESS);
+	mActivationCompleted = CreateEventEx(NULL, L"Local\\MSWinRTCapActivation", 0, EVENT_ALL_ACCESS);
 	if (!mActivationCompleted) {
-		ms_error("[MSWP8Cap] Could not create activation event [%i]", GetLastError());
+		ms_error("[MSWinRTCap] Could not create activation event [%i]", GetLastError());
 		return;
 	}
-	mStartCompleted = CreateEventEx(NULL, L"Local\\MSWP8CapStart", 0, EVENT_ALL_ACCESS);
+	mStartCompleted = CreateEventEx(NULL, L"Local\\MSWinRTCapStart", 0, EVENT_ALL_ACCESS);
 	if (!mStartCompleted) {
-		ms_error("[MSWP8Cap] Could not create start event [%i]", GetLastError());
+		ms_error("[MSWinRTCap] Could not create start event [%i]", GetLastError());
 		return;
 	}
-	mStopCompleted = CreateEventEx(NULL, L"Local\\MSWP8CapStop", 0, EVENT_ALL_ACCESS);
+	mStopCompleted = CreateEventEx(NULL, L"Local\\MSWinRTCapStop", 0, EVENT_ALL_ACCESS);
 	if (!mStopCompleted) {
-		ms_error("[MSWP8Cap] Could not create stop event [%i]", GetLastError());
+		ms_error("[MSWinRTCap] Could not create stop event [%i]", GetLastError());
 		return;
 	}
 
@@ -86,7 +88,7 @@ MSWP8Cap::MSWP8Cap()
 	smInstantiated = true;
 }
 
-MSWP8Cap::~MSWP8Cap()
+MSWinRTCap::~MSWinRTCap()
 {
 	stop();
 	deactivate();
@@ -102,13 +104,18 @@ MSWP8Cap::~MSWP8Cap()
 		CloseHandle(mActivationCompleted);
 		mActivationCompleted = NULL;
 	}
+	if (mAllocator != NULL) {
+		ms_yuv_buf_allocator_free(mAllocator);
+		mAllocator = NULL;
+	}
 	ms_mutex_destroy(&mMutex);
 	smInstantiated = false;
 }
 
 
-int MSWP8Cap::activate()
+int MSWinRTCap::activate()
 {
+#ifdef MS2_WINDOWS_PHONE
 	IAsyncOperation<AudioVideoCaptureDevice^> ^openOperation = nullptr;
 
 	if (!mIsInitialized) return -1;
@@ -127,12 +134,12 @@ int MSWP8Cap::activate()
 		case Windows::Foundation::AsyncStatus::Completed:
 		{
 			IAudioVideoCaptureDeviceNative *pNativeDevice = nullptr;
-			ms_message("[MSWP8Cap] OpenAsyncOperation completed");
+			ms_message("[MSWinRTCap] OpenAsyncOperation completed");
 			mVideoDevice = operation->GetResults();
 			mCameraSensorRotation = (int)mVideoDevice->SensorRotationInDegrees;
 			HRESULT hr = reinterpret_cast<IUnknown*>(mVideoDevice)->QueryInterface(__uuidof(IAudioVideoCaptureDeviceNative), (void**)&pNativeDevice);
 			if ((pNativeDevice == nullptr) || FAILED(hr)) {
-				ms_error("[MSWP8Cap] Unable to query interface IAudioVideoCaptureDeviceNative");
+				ms_error("[MSWinRTCap] Unable to query interface IAudioVideoCaptureDeviceNative");
 			} else {
 				mNativeVideoDevice = pNativeDevice;
 				configure();
@@ -145,10 +152,10 @@ int MSWP8Cap::activate()
 		}
 			break;
 		case Windows::Foundation::AsyncStatus::Canceled:
-			ms_warning("[MSWP8Cap] OpenAsyncOperation has been canceled");
+			ms_warning("[MSWinRTCap] OpenAsyncOperation has been canceled");
 			break;
 		case Windows::Foundation::AsyncStatus::Error:
-			ms_error("[MSWP8Cap] OpenAsyncOperation failed [0x%x]", operation->ErrorCode);
+			ms_error("[MSWinRTCap] OpenAsyncOperation failed [0x%x]", operation->ErrorCode);
 			break;
 		default:
 			break;
@@ -156,10 +163,11 @@ int MSWP8Cap::activate()
 		SetEvent(mActivationCompleted);
 	});
 	WaitForSingleObjectEx(mActivationCompleted, INFINITE, FALSE);
+#endif
 	return 0;
 }
 
-int MSWP8Cap::deactivate()
+int MSWinRTCap::deactivate()
 {
 	if (mRfc3984Packer != nullptr) {
 		rfc3984_destroy(mRfc3984Packer);
@@ -170,19 +178,20 @@ int MSWP8Cap::deactivate()
 	return 0;
 }
 
-void MSWP8Cap::start()
+void MSWinRTCap::start()
 {
+#ifdef MS2_WINDOWS_PHONE
 	if (!mIsStarted && mIsActivated) {
 		mVideoDevice->StartRecordingToSinkAsync()->Completed = ref new AsyncActionCompletedHandler([this] (IAsyncAction ^asyncAction, Windows::Foundation::AsyncStatus status) {
 			switch (status) {
 			case Windows::Foundation::AsyncStatus::Completed:
-				ms_message("[MSWP8Cap] StartRecordingToSinkAsync completed");
+				ms_message("[MSWinRTCap] StartRecordingToSinkAsync completed");
 				break;
 			case Windows::Foundation::AsyncStatus::Canceled:
-				ms_error("[MSWP8Cap] StartRecordingToSinkAsync has been cancelled");
+				ms_error("[MSWinRTCap] StartRecordingToSinkAsync has been cancelled");
 				break;
 			case Windows::Foundation::AsyncStatus::Error:
-				ms_error("[MSWP8Cap] StartRecordingToSinkAsync failed");
+				ms_error("[MSWinRTCap] StartRecordingToSinkAsync failed");
 				break;
 			default:
 				break;
@@ -196,26 +205,28 @@ void MSWP8Cap::start()
 #endif
 		WaitForSingleObjectEx(mStartCompleted, INFINITE, FALSE);
 	}
+#endif
 }
 
-void MSWP8Cap::stop()
+void MSWinRTCap::stop()
 {
 	mblk_t *m;
 
 	if (!mIsStarted) return;
 
+#ifdef MS2_WINDOWS_PHONE
 	if (mVideoDevice) {
 		try {
 			mVideoDevice->StopRecordingAsync()->Completed = ref new AsyncActionCompletedHandler([this] (IAsyncAction ^asyncAction, Windows::Foundation::AsyncStatus status) {
 				switch (status) {
 				case Windows::Foundation::AsyncStatus::Completed:
-					ms_message("[MSWP8Cap] StopRecordingAsync completed");
+					ms_message("[MSWinRTCap] StopRecordingAsync completed");
 					break;
 				case Windows::Foundation::AsyncStatus::Canceled:
-					ms_error("[MSWP8Cap] StopRecordingAsync has been cancelled");
+					ms_error("[MSWinRTCap] StopRecordingAsync has been cancelled");
 					break;
 				case Windows::Foundation::AsyncStatus::Error:
-					ms_error("[MSWP8Cap] StopRecordingAsync failed");
+					ms_error("[MSWinRTCap] StopRecordingAsync failed");
 					break;
 				default:
 					break;
@@ -227,7 +238,7 @@ void MSWP8Cap::stop()
 		} catch(Platform::ObjectDisposedException^ e) {
 			// A Platform::ObjectDisposedException can be raised if the app has had its access
 			// to video revoked (most commonly when the app is going out of the foreground)
-			ms_warning("[MSWP8Cap] Exception caught during StopRecordingAsync");
+			ms_warning("[MSWinRTCap] Exception caught during StopRecordingAsync");
 			mVideoDevice = nullptr;
 			mIsStarted = false;
 			SetEvent(mStopCompleted);
@@ -244,6 +255,7 @@ void MSWP8Cap::stop()
 
 		WaitForSingleObjectEx(mStopCompleted, INFINITE, FALSE);
 	}
+#endif
 
 	ms_mutex_lock(&mMutex);
 	// Free samples that have already been sent
@@ -257,7 +269,7 @@ void MSWP8Cap::stop()
 	ms_mutex_unlock(&mMutex);
 }
 
-int MSWP8Cap::feed(MSFilter *f)
+int MSWinRTCap::feed(MSFilter *f)
 {
 	mblk_t *im;
 
@@ -297,7 +309,7 @@ static void freeSample(void *sample)
 	delete[] sample;
 }
 
-void MSWP8Cap::OnSampleAvailable(ULONGLONG hnsPresentationTime, ULONGLONG hnsSampleDuration, DWORD cbSample, BYTE* pSample)
+void MSWinRTCap::OnSampleAvailable(ULONGLONG hnsPresentationTime, ULONGLONG hnsSampleDuration, DWORD cbSample, BYTE* pSample)
 {
 	MS_UNUSED(hnsSampleDuration);
 	mblk_t *m;
@@ -317,7 +329,7 @@ void MSWP8Cap::OnSampleAvailable(ULONGLONG hnsPresentationTime, ULONGLONG hnsSam
 		}
 		uint8_t *y = (uint8_t *)pSample;
 		uint8_t *cbcr = (uint8_t *)(pSample + w * h);
-		m = copy_ycbcrbiplanar_to_true_yuv_with_rotation(y, cbcr, 0, w, h, w, w, TRUE);
+		m = copy_ycbcrbiplanar_to_true_yuv_with_rotation(mAllocator, y, cbcr, 0, w, h, w, w, TRUE);
 	}
 	mblk_set_timestamp_info(m, timestamp);
 
@@ -327,18 +339,20 @@ void MSWP8Cap::OnSampleAvailable(ULONGLONG hnsPresentationTime, ULONGLONG hnsSam
 }
 
 
-void MSWP8Cap::setCameraLocation(uint32 location)
+void MSWinRTCap::setCameraLocation(uint32 location)
 {
+#ifdef MS2_WINDOWS_PHONE
 	mCameraLocation = (CameraSensorLocation)location;
+#endif
 }
 
-void MSWP8Cap::setFps(float fps)
+void MSWinRTCap::setFps(float fps)
 {
 	mVConf.fps = fps;
 	setConfiguration(&mVConf);
 }
 
-void MSWP8Cap::setBitrate(int bitrate)
+void MSWinRTCap::setBitrate(int bitrate)
 {
 	if (mIsActivated) {
 		/* Encoding is already ongoing, do not change video size, only bitrate. */
@@ -350,7 +364,7 @@ void MSWP8Cap::setBitrate(int bitrate)
 	}
 }
 
-MSVideoSize MSWP8Cap::getVideoSize()
+MSVideoSize MSWinRTCap::getVideoSize()
 {
 	MSVideoSize vs;
 	if ((mDeviceOrientation % 180) == 0) {
@@ -362,7 +376,7 @@ MSVideoSize MSWP8Cap::getVideoSize()
 	return vs;
 }
 
-void MSWP8Cap::setVideoSize(MSVideoSize vs)
+void MSWinRTCap::setVideoSize(MSVideoSize vs)
 {
 	MSVideoConfiguration best_vconf;
 	best_vconf = ms_video_find_best_configuration_for_size(h264_conf_list, vs, ms_get_cpu_count());
@@ -373,12 +387,12 @@ void MSWP8Cap::setVideoSize(MSVideoSize vs)
 	setConfiguration(&mVConf);
 }
 
-const MSVideoConfiguration * MSWP8Cap::getConfigurationList()
+const MSVideoConfiguration * MSWinRTCap::getConfigurationList()
 {
 	return h264_conf_list;
 }
 
-void MSWP8Cap::setConfiguration(const MSVideoConfiguration *vconf)
+void MSWinRTCap::setConfiguration(const MSVideoConfiguration *vconf)
 {
 	if (vconf != &mVConf) memcpy(&mVConf, vconf, sizeof(MSVideoConfiguration));
 
@@ -392,24 +406,27 @@ void MSWP8Cap::setConfiguration(const MSVideoConfiguration *vconf)
 	applyFps();
 }
 
-void MSWP8Cap::setDeviceOrientation(int degrees)
+void MSWinRTCap::setDeviceOrientation(int degrees)
 {
 	mDeviceOrientation = degrees;
 }
 
-void MSWP8Cap::requestIdrFrame()
+void MSWinRTCap::requestIdrFrame()
 {
 	if (mIsStarted) {
 		if (mPixFmt == MS_H264) {
 			Platform::Boolean value = true;
+#ifdef MS2_WINDOWS_PHONE
 			mVideoDevice->SetProperty(KnownCameraAudioVideoProperties::H264RequestIdrFrame, value);
+#endif
 		}
 	}
 }
 
 
-void MSWP8Cap::applyFps()
+void MSWinRTCap::applyFps()
 {
+#ifdef MS2_WINDOWS_PHONE
 	// WARNING: Do not change the FPS while the capture is active. The SetProperty call does not return in this case!
 	if (mVideoDevice && !mIsActivated) {
 		uint32 value = (uint32)mVConf.fps;
@@ -421,29 +438,32 @@ void MSWP8Cap::applyFps()
 		mVideoDevice->SetProperty(KnownCameraAudioVideoProperties::VideoFrameRate, value);
 		value = safe_cast<uint32>(mVideoDevice->GetProperty(KnownCameraAudioVideoProperties::VideoFrameRate));
 	}
+#endif
 }
 
-void MSWP8Cap::applyVideoSize()
+void MSWinRTCap::applyVideoSize()
 {
 	IAsyncAction^ action = nullptr;
 	Size dimensions;
 	dimensions.Width = (float)mVConf.vsize.width;
 	dimensions.Height = (float)mVConf.vsize.height;
+#ifdef MS2_WINDOWS_PHONE
 	action = mVideoDevice->SetCaptureResolutionAsync(dimensions);
 	action->Completed = ref new AsyncActionCompletedHandler([this] (IAsyncAction^ action, Windows::Foundation::AsyncStatus status) {
 		if (status == Windows::Foundation::AsyncStatus::Completed) {
-			ms_debug("[MSWP8Cap] AsyncAction completed");
+			ms_debug("[MSWinRTCap] AsyncAction completed");
 		}
 		else if (status == Windows::Foundation::AsyncStatus::Canceled) {
-			ms_warning("[MSWP8Cap] AsyncAction has been canceled");
+			ms_warning("[MSWinRTCap] AsyncAction has been canceled");
 		}
 		else if (status == Windows::Foundation::AsyncStatus::Error) {
-			ms_error("[MSWP8Cap] AsyncAction failed");
+			ms_error("[MSWinRTCap] AsyncAction failed");
 		}
 	});
+#endif
 }
 
-void MSWP8Cap::bitstreamToMsgb(uint8_t *encoded_buf, size_t size, MSQueue *nalus) {
+void MSWinRTCap::bitstreamToMsgb(uint8_t *encoded_buf, size_t size, MSQueue *nalus) {
 	size_t idx = 0;
 	size_t frame_start_idx;
 	mblk_t *m;
@@ -474,7 +494,7 @@ void MSWP8Cap::bitstreamToMsgb(uint8_t *encoded_buf, size_t size, MSQueue *nalus
 	}
 }
 
-bool MSWP8Cap::selectBestVideoSize()
+bool MSWinRTCap::selectBestVideoSize()
 {
 	Collections::IVectorView<Size> ^availableSizes;
 	Collections::IIterator<Size> ^availableSizesIterator;
@@ -485,13 +505,14 @@ bool MSWP8Cap::selectBestVideoSize()
 	bestFoundSize.width = bestFoundSize.height = 0;
 	requestedSize.width = mVConf.vsize.width;
 	requestedSize.height = mVConf.vsize.height;
+#ifdef MS2_WINDOWS_PHONE
 	availableSizes = AudioVideoCaptureDevice::GetAvailableCaptureResolutions(mCameraLocation);
 	availableSizesIterator = availableSizes->First();
 	while (availableSizesIterator->HasCurrent) {
 		MSVideoSize currentSize;
 		currentSize.width = (int)availableSizesIterator->Current.Width;
 		currentSize.height = (int)availableSizesIterator->Current.Height;
-		ms_message("[MSWP8Cap] Seeing video size %ix%i", currentSize.width, currentSize.height);
+		ms_message("[MSWinRTCap] Seeing video size %ix%i", currentSize.width, currentSize.height);
 		if (ms_video_size_greater_than(requestedSize, currentSize)) {
 			if (ms_video_size_greater_than(currentSize, bestFoundSize)) {
 				bestFoundSize = currentSize;
@@ -504,19 +525,20 @@ bool MSWP8Cap::selectBestVideoSize()
 	}
 
 	if ((bestFoundSize.width == 0) && bestFoundSize.height == 0) {
-		ms_warning("[MSWP8Cap] This camera does not support our video size, use minimum size available");
+		ms_warning("[MSWinRTCap] This camera does not support our video size, use minimum size available");
 		mVConf.vsize.width = minSize.width;
 		mVConf.vsize.height = minSize.height;
 		return false;
 	}
+#endif
 
 	mVConf.vsize.width = bestFoundSize.width;
 	mVConf.vsize.height = bestFoundSize.height;
-	ms_message("[MSWP8Cap] Best video size is %ix%i", bestFoundSize.width, bestFoundSize.height);
+	ms_message("[MSWinRTCap] Best video size is %ix%i", bestFoundSize.width, bestFoundSize.height);
 	return true;
 }
 
-void MSWP8Cap::configure()
+void MSWinRTCap::configure()
 {
 	bool unMuteAudio = true;
 	bool supportH264BaselineProfile = false;
@@ -524,6 +546,7 @@ void MSWP8Cap::configure()
 	Collections::IVectorView<Platform::Object^>^ values;
 	Collections::IIterator<Platform::Object^> ^valuesIterator;
 
+#ifdef MS2_WINDOWS_PHONE
 	// Configure the sensor rotation for the capture
 	if (mCameraLocation == CameraSensorLocation::Front) {
 		boxedSensorRotation = (360 - mCameraSensorRotation + 360 - mDeviceOrientation) % 360;
@@ -557,19 +580,19 @@ void MSWP8Cap::configure()
 			}
 			catch (Platform::COMException^ e) {
 				if (e->HResult == E_NOTIMPL) {
-					ms_warning("[MSWP8Cap] This device does not support setting the H264 encoding profile");
+					ms_warning("[MSWinRTCap] This device does not support setting the H264 encoding profile");
 				}
 			}
 		}
 		else {
-			ms_warning("[MSWP8Cap] This camera does not support H264 baseline profile");
+			ms_warning("[MSWinRTCap] This camera does not support H264 baseline profile");
 		}
 		try {
 			mVideoDevice->SetProperty(KnownCameraAudioVideoProperties::H264EncodingLevel, H264EncoderLevel::Level1_3);
 		}
 		catch (Platform::COMException^ e) {
 			if (e->HResult == E_NOTIMPL) {
-				ms_warning("[MSWP8Cap] This device does not support setting the H264 encoding level");
+				ms_warning("[MSWinRTCap] This device does not support setting the H264 encoding level");
 			}
 		}
 		try {
@@ -577,18 +600,20 @@ void MSWP8Cap::configure()
 		}
 		catch (Platform::COMException^ e) {
 			if (e->HResult == E_NOTIMPL) {
-				ms_warning("[MSWP8Cap] This device does not support setting the H264 quantization parameter");
+				ms_warning("[MSWinRTCap] This device does not support setting the H264 quantization parameter");
 			}
 		}
 	}
 	else {
 		mVideoDevice->VideoEncodingFormat = CameraCaptureVideoFormat::Nv12;
 	}
+#endif
 }
 
 
-void MSWP8Cap::detectCameras(MSWebCamManager *manager, MSWebCamDesc *desc)
+void MSWinRTCap::detectCameras(MSWebCamManager *manager, MSWebCamDesc *desc)
 {
+#ifdef MS2_WINDOWS_PHONE
 	Collections::IVectorView<CameraSensorLocation> ^availableSensorLocations;
 	Collections::IIterator<CameraSensorLocation> ^availableSensorLocationsIterator;
 	MSList *camlist = NULL;
@@ -612,92 +637,95 @@ void MSWP8Cap::detectCameras(MSWebCamManager *manager, MSWebCamDesc *desc)
 	}
 
 	if (ms_list_size(camlist) == 0) {
-		ms_warning("[MSWP8Cap] This device does not have a camera");
+		ms_warning("[MSWinRTCap] This device does not have a camera");
 	}
 	for (i = 0; i < ms_list_size(camlist); i++) {
 		ms_web_cam_manager_prepend_cam(manager, (MSWebCam *)ms_list_nth_data(camlist, i));
 	}
 	ms_list_free(camlist);
+#endif
 }
 
-void MSWP8Cap::printProperties()
+void MSWinRTCap::printProperties()
 {
+#ifdef MS2_WINDOWS_PHONE
 	Collections::IVectorView<Platform::Object^>^ values = mVideoDevice->GetSupportedPropertyValues(mCameraLocation, KnownCameraAudioVideoProperties::H264EnableKeyframes);
-	ms_message("[MSWP8Cap] H264EnableKeyFrames supported values:");
+	ms_message("[MSWinRTCap] H264EnableKeyFrames supported values:");
 	Collections::IIterator<Platform::Object^> ^valuesIterator = values->First();
 	while (valuesIterator->HasCurrent) {
 		bool enable = safe_cast<bool>(valuesIterator->Current);
-		ms_message("[MSWP8Cap]   %s", enable ? "true" : "false");
+		ms_message("[MSWinRTCap]   %s", enable ? "true" : "false");
 		valuesIterator->MoveNext();
 	}
 	bool H264EnableKeyFrames = safe_cast<bool>(mVideoDevice->GetProperty(KnownCameraAudioVideoProperties::H264EnableKeyframes));
-	ms_message("[MSWP8Cap] H264EnableKeyFrames value: %s", H264EnableKeyFrames ? "true" : "false");
+	ms_message("[MSWinRTCap] H264EnableKeyFrames value: %s", H264EnableKeyFrames ? "true" : "false");
 
 	values = mVideoDevice->GetSupportedPropertyValues(mCameraLocation, KnownCameraAudioVideoProperties::H264EncodingLevel);
-	ms_message("[MSWP8Cap] H264EncodingLevel supported values:");
+	ms_message("[MSWinRTCap] H264EncodingLevel supported values:");
 	valuesIterator = values->First();
 	while (valuesIterator->HasCurrent) {
 		int value = safe_cast<int>(valuesIterator->Current);
-		ms_message("[MSWP8Cap]   %d", value);
+		ms_message("[MSWinRTCap]   %d", value);
 		valuesIterator->MoveNext();
 	}
 	auto H264EncodingLevel = mVideoDevice->GetProperty(KnownCameraAudioVideoProperties::H264EncodingLevel);
 	if (H264EncodingLevel != nullptr) {
 		int level = safe_cast<int>(H264EncodingLevel);
-		ms_message("[MSWP8Cap] H264EncodingLevel value: %d", level);
+		ms_message("[MSWinRTCap] H264EncodingLevel value: %d", level);
 	} else {
-		ms_message("[MSWP8Cap] Cannot get H264EncodingLevel");
+		ms_message("[MSWinRTCap] Cannot get H264EncodingLevel");
 	}
 
 	values = mVideoDevice->GetSupportedPropertyValues(mCameraLocation, KnownCameraAudioVideoProperties::H264EncodingProfile);
-	ms_message("[MSWP8Cap] H264EncodingProfile supported values:");
+	ms_message("[MSWinRTCap] H264EncodingProfile supported values:");
 	valuesIterator = values->First();
 	while (valuesIterator->HasCurrent) {
 		int value = safe_cast<int>(valuesIterator->Current);
-		ms_message("[MSWP8Cap]   %d", value);
+		ms_message("[MSWinRTCap]   %d", value);
 		valuesIterator->MoveNext();
 	}
 	auto H264EncodingProfile = mVideoDevice->GetProperty(KnownCameraAudioVideoProperties::H264EncodingProfile);
 	if (H264EncodingProfile != nullptr) {
 		int profile = safe_cast<int>(H264EncodingProfile);
-		ms_message("[MSWP8Cap] H264EncodingProfile value: %u", profile);
+		ms_message("[MSWinRTCap] H264EncodingProfile value: %u", profile);
 	} else {
-		ms_message("[MSWP8Cap] Cannot get H264EncodingProfile");
+		ms_message("[MSWinRTCap] Cannot get H264EncodingProfile");
 	}
 
 	CameraCapturePropertyRange^ range = mVideoDevice->GetSupportedPropertyRange(mCameraLocation, KnownCameraAudioVideoProperties::H264QuantizationParameter);
-	ms_message("[MSWP8Cap] H264QuantizationParameter range: %u-%u", safe_cast<uint32>(range->Min), safe_cast<uint32>(range->Max));
+	ms_message("[MSWinRTCap] H264QuantizationParameter range: %u-%u", safe_cast<uint32>(range->Min), safe_cast<uint32>(range->Max));
 	auto H264QuantizationParameter = mVideoDevice->GetProperty(KnownCameraAudioVideoProperties::H264QuantizationParameter);
 	if (H264QuantizationParameter != nullptr) {
 		uint32 qp = safe_cast<uint32>(H264QuantizationParameter);
-		ms_message("[MSWP8Cap] H264QuantizationParameter value: %u", qp);
+		ms_message("[MSWinRTCap] H264QuantizationParameter value: %u", qp);
 	} else {
-		ms_message("[MSWP8Cap] Cannot get H264QuantizationParameter");
+		ms_message("[MSWinRTCap] Cannot get H264QuantizationParameter");
 	}
 
 	range = mVideoDevice->GetSupportedPropertyRange(mCameraLocation, KnownCameraAudioVideoProperties::VideoFrameRate);
-	ms_message("[MSWP8Cap] VideoFrameRate range: %u-%u", safe_cast<uint32>(range->Min), safe_cast<uint32>(range->Max));
+	ms_message("[MSWinRTCap] VideoFrameRate range: %u-%u", safe_cast<uint32>(range->Min), safe_cast<uint32>(range->Max));
 	uint32 fps = safe_cast<uint32>(mVideoDevice->GetProperty(KnownCameraAudioVideoProperties::VideoFrameRate));
-	ms_message("[MSWP8Cap] VideoFrameRate value: %u", fps);
+	ms_message("[MSWinRTCap] VideoFrameRate value: %u", fps);
 
 	values = mVideoDevice->GetSupportedPropertyValues(mCameraLocation, KnownCameraAudioVideoProperties::VideoTorchMode);
-	ms_message("[MSWP8Cap] VideoTorchMode supported values:");
+	ms_message("[MSWinRTCap] VideoTorchMode supported values:");
 	valuesIterator = values->First();
 	while (valuesIterator->HasCurrent) {
 		uint32 value = safe_cast<uint32>(valuesIterator->Current);
-		ms_message("[MSWP8Cap]   %u", value);
+		ms_message("[MSWinRTCap]   %u", value);
 		valuesIterator->MoveNext();
 	}
 	auto VideoTorchMode = mVideoDevice->GetProperty(KnownCameraAudioVideoProperties::VideoTorchMode);
 	if (VideoTorchMode != nullptr) {
 		uint32 mode = safe_cast<uint32>(VideoTorchMode);
-		ms_message("[MSWP8Cap] VideoTorchMode value: %u", mode);
+		ms_message("[MSWinRTCap] VideoTorchMode value: %u", mode);
 	} else {
-		ms_message("[MSWP8Cap] Cannot get VideoTorchMode");
+		ms_message("[MSWinRTCap] Cannot get VideoTorchMode");
 	}
 
 	range = mVideoDevice->GetSupportedPropertyRange(mCameraLocation, KnownCameraAudioVideoProperties::VideoTorchPower);
-	ms_message("[MSWP8Cap] VideoTorchPower range: %u-%u", safe_cast<uint32>(range->Min), safe_cast<uint32>(range->Max));
+	ms_message("[MSWinRTCap] VideoTorchPower range: %u-%u", safe_cast<uint32>(range->Min), safe_cast<uint32>(range->Max));
 	uint32 power = safe_cast<uint32>(mVideoDevice->GetProperty(KnownCameraAudioVideoProperties::VideoTorchPower));
-	ms_message("[MSWP8Cap] VideoTorchPower value: %u", power);
+	ms_message("[MSWinRTCap] VideoTorchPower value: %u", power);
+#endif
 }

@@ -1,5 +1,5 @@
 /*
-mswp8dis.h
+mswinrtdis.h
 
 mediastreamer2 library - modular sound and video processing and streaming
 Windows Audio Session API sound card plugin for mediastreamer2
@@ -24,22 +24,29 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #pragma once
 
 
-#include "windows.h"
-#include "implements.h"
+#include <mediastreamer2/mscommon.h>
+#include <mediastreamer2/msfilter.h>
+#include <mediastreamer2/msticker.h>
+#include <mediastreamer2/msvideo.h>
+#include <mediastreamer2/rfc3984.h>
+
+#ifdef MS2_WINDOWS_PHONE
+#include <implements.h>
+#endif
 #include <robuffer.h>
 #include <windows.storage.streams.h>
-#include "mediastreamer2/msfilter.h"
-#include "mediastreamer2/rfc3984.h"
 
+#ifdef MS2_WINDOWS_PHONE
 #include "IVideoRenderer.h"
+#endif
 
 
-namespace mswp8vid
+namespace mswinrtvid
 {
-	class MSWP8Dis {
+	class MSWinRTDis {
 	public:
-		MSWP8Dis();
-		virtual ~MSWP8Dis();
+		MSWinRTDis();
+		virtual ~MSWinRTDis();
 
 		int activate();
 		int deactivate();
@@ -50,8 +57,10 @@ namespace mswp8vid
 		MSVideoSize getVideoSize();
 		void setVideoSize(MSVideoSize vs);
 		void setPixFmt(MSPixFmt pix_fmt) { mPixFmt = pix_fmt; }
-		Mediastreamer2::WP8Video::IVideoRenderer^ getVideoRenderer();
-		void setVideoRenderer(Mediastreamer2::WP8Video::IVideoRenderer^ renderer);
+#ifdef MS2_WINDOWS_PHONE
+		Mediastreamer2::WinRTVideo::IVideoRenderer^ getVideoRenderer();
+		void setVideoRenderer(Mediastreamer2::WinRTVideo::IVideoRenderer^ renderer);
+#endif
 
 	private:
 		int nalusToFrame(MSQueue *nalus, bool *new_sps_pps);
@@ -74,7 +83,9 @@ namespace mswp8vid
 		uint8_t *mBitstream;
 		mblk_t *mSPS;
 		mblk_t *mPPS;
-		Mediastreamer2::WP8Video::IVideoRenderer^ mRenderer;
+#ifdef MS2_WINDOWS_PHONE
+		Mediastreamer2::WinRTVideo::IVideoRenderer^ mRenderer;
+#endif
 		bool mFirstFrameReceived;
 	};
 }

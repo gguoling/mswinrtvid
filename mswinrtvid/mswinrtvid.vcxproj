@@ -20,10 +20,10 @@
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{0565952a-ea62-46a2-8261-f5b4b490da42}</ProjectGuid>
-    <RootNamespace>mswp8vid</RootNamespace>
+    <RootNamespace>mswinrtvid</RootNamespace>
     <DefaultLanguage>en-US</DefaultLanguage>
     <MinimumVisualStudioVersion>11.0</MinimumVisualStudioVersion>
-    <ProjectName>libmswp8vid</ProjectName>
+    <ProjectName>libmswinrtvid</ProjectName>
     <WinMDAssembly>true</WinMDAssembly>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
@@ -103,15 +103,15 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\mswp8dis.cpp" />
-    <ClCompile Include="..\mswp8vid.cpp" />
-    <ClCompile Include="..\mswp8cap.cpp" />
+    <ClCompile Include="..\mswinrtdis.cpp" />
+    <ClCompile Include="..\mswinrtvid.cpp" />
+    <ClCompile Include="..\mswinrtcap.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\IVideoDispatcher.h" />
     <ClInclude Include="..\IVideoRenderer.h" />
-    <ClInclude Include="..\mswp8cap.h" />
-    <ClInclude Include="..\mswp8dis.h" />
+    <ClInclude Include="..\mswinrtcap.h" />
+    <ClInclude Include="..\mswinrtdis.h" />
     <ClInclude Include="..\VideoBuffer.h" />
   </ItemGroup>
   <ItemGroup>

@@ -1,5 +1,5 @@
 /*
-mswp8dis.cpp
+mswinrtdis.cpp
 
 mediastreamer2 library - modular sound and video processing and streaming
 Windows Audio Session API sound card plugin for mediastreamer2
@@ -21,15 +21,12 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 
 
-#include "mediastreamer2/mscommon.h"
-#include "mediastreamer2/msticker.h"
-#include "mediastreamer2/msvideo.h"
-#include "mswp8dis.h"
+#include "mswinrtdis.h"
 #include "VideoBuffer.h"
 
 using namespace Microsoft::WRL;
-using namespace mswp8vid;
-using namespace Mediastreamer2::WP8Video;
+using namespace mswinrtvid;
+//using namespace Mediastreamer2::WinRTVideo;
 
 
 
@@ -65,15 +62,19 @@ static uint8_t get_ue_at_bit_offset(uint8_t *data, uint32_t *bit_offset) {
 
 
 
-bool MSWP8Dis::smInstantiated = false;
+bool MSWinRTDis::smInstantiated = false;
 
 
-MSWP8Dis::MSWP8Dis()
+MSWinRTDis::MSWinRTDis()
 	: mIsInitialized(false), mIsActivated(false), mIsStarted(false), mWidth(MS_VIDEO_SIZE_CIF_W), mHeight(MS_VIDEO_SIZE_CIF_H),
-	mRfc3984Unpacker(nullptr), mBitstreamSize(65536), mBitstream(nullptr), mSPS(nullptr), mPPS(nullptr), mRenderer(nullptr), mFirstFrameReceived(false)
+	mRfc3984Unpacker(nullptr), mBitstreamSize(65536), mBitstream(nullptr), mSPS(nullptr), mPPS(nullptr),
+#ifdef MS2_WINDOWS_PHONE
+	mRenderer(nullptr),
+#endif
+	mFirstFrameReceived(false)
 {
 	if (smInstantiated) {
-		ms_error("[MSWP8Dis] A video display filter is already instantiated. A second one can not be created.");
+		ms_error("[MSWinRTDis] A video display filter is already instantiated. A second one can not be created.");
 		return;
 	}
 
@@ -81,13 +82,13 @@ MSWP8Dis::MSWP8Dis()
 	smInstantiated = true;
 }
 
-MSWP8Dis::~MSWP8Dis()
+MSWinRTDis::~MSWinRTDis()
 {
 	stop();
 	smInstantiated = false;
 }
 
-int MSWP8Dis::activate()
+int MSWinRTDis::activate()
 {
 	if (!mIsInitialized) return -1;
 
@@ -96,7 +97,7 @@ int MSWP8Dis::activate()
 	return 0;
 }
 
-int MSWP8Dis::deactivate()
+int MSWinRTDis::deactivate()
 {
 	if (mRfc3984Unpacker != nullptr) {
 		rfc3984_destroy(mRfc3984Unpacker);
@@ -118,7 +119,7 @@ int MSWP8Dis::deactivate()
 	return 0;
 }
 
-void MSWP8Dis::start()
+void MSWinRTDis::start()
 {
 	if (!mIsStarted && mIsActivated) {
 		mIsStarted = true;
@@ -127,26 +128,30 @@ void MSWP8Dis::start()
 			format = ref new Platform::String(L"H264");
 		else
 			format = ref new Platform::String(L"YV12");
+#ifdef MS2_WINDOWS_PHONE
 		if (mRenderer != nullptr) {
-			ms_message("[MSWP8Dis] Start renderer %s - %dx%d", ms_pix_fmt_to_string(mPixFmt), mWidth, mHeight);
+			ms_message("[MSWinRTDis] Start renderer %s - %dx%d", ms_pix_fmt_to_string(mPixFmt), mWidth, mHeight);
 			mRenderer->Start(format, mWidth, mHeight);
 		}
+#endif
 	}
 }
 
-void MSWP8Dis::stop()
+void MSWinRTDis::stop()
 {
 	if (mIsStarted) {
 		mIsStarted = false;
 		mFirstFrameReceived = false;
+#ifdef MS2_WINDOWS_PHONE
 		if (mRenderer != nullptr) {
-			ms_message("[MSWP8Dis] Stop renderer");
+			ms_message("[MSWinRTDis] Stop renderer");
 			mRenderer->Stop();
 		}
+#endif
 	}
 }
 
-int MSWP8Dis::feed(MSFilter *f)
+int MSWinRTDis::feed(MSFilter *f)
 {
 	mblk_t *im;
 
@@ -161,11 +166,13 @@ int MSWP8Dis::feed(MSFilter *f)
 					bool need_reinit = false;
 					size = nalusToFrame(&nalus, &need_reinit);
 					if (need_reinit) {
+#ifdef MS2_WINDOWS_PHONE
 						if (mRenderer != nullptr) {
 							Platform::String^ format = ref new Platform::String(L"H264");
-							ms_message("[MSWP8Dis] Change renderer format: %s - %dx%d", "H264", mWidth, mHeight);
+							ms_message("[MSWinRTDis] Change renderer format: %s - %dx%d", "H264", mWidth, mHeight);
 							mRenderer->ChangeFormat(format, mWidth, mHeight);
 						}
+#endif
 					}
 				}
 			}
@@ -180,6 +187,7 @@ int MSWP8Dis::feed(MSFilter *f)
 				memcpy(mBitstream + ysize, buf.planes[2], usize);
 				memcpy(mBitstream + ysize + usize, buf.planes[1], usize);
 				freemsg(im);
+#ifdef MS2_WINDOWS_PHONE
 				if ((mRenderer != nullptr) && ((buf.w != mWidth) || (buf.h != mHeight))) {
 					mWidth = buf.w;
 					mHeight = buf.h;
@@ -192,7 +200,9 @@ int MSWP8Dis::feed(MSFilter *f)
 						mRenderer->ChangeFormat(format, mWidth, mHeight);
 					}
 				}
+#endif
 			}
+#ifdef MS2_WINDOWS_PHONE
 			if ((size > 0) && (mRenderer != nullptr)) {
 				if (!mFirstFrameReceived) {
 					mFirstFrameReceived = true;
@@ -204,6 +214,7 @@ int MSWP8Dis::feed(MSFilter *f)
 					mRenderer->Dispatcher->OnSampleReceived(VideoBuffer::GetIBuffer(spVideoBuffer), f->ticker->time * 10000LL);
 				}
 			}
+#endif
 		}
 	} else {
 		if (f->inputs[0] != NULL) {
@@ -218,7 +229,7 @@ int MSWP8Dis::feed(MSFilter *f)
 	return 0;
 }
 
-MSVideoSize MSWP8Dis::getVideoSize()
+MSVideoSize MSWinRTDis::getVideoSize()
 {
 	MSVideoSize vs;
 	vs.width = mWidth;
@@ -226,23 +237,25 @@ MSVideoSize MSWP8Dis::getVideoSize()
 	return vs;
 }
 
-void MSWP8Dis::setVideoSize(MSVideoSize vs)
+void MSWinRTDis::setVideoSize(MSVideoSize vs)
 {
 	mWidth = vs.width;
 	mHeight = vs.height;
 }
 
-Mediastreamer2::WP8Video::IVideoRenderer^ MSWP8Dis::getVideoRenderer()
+#ifdef MS2_WINDOWS_PHONE
+Mediastreamer2::WinRTVideo::IVideoRenderer^ MSWinRTDis::getVideoRenderer()
 {
 	return mRenderer;
 }
 
-void MSWP8Dis::setVideoRenderer(IVideoRenderer^ renderer)
+void MSWinRTDis::setVideoRenderer(IVideoRenderer^ renderer)
 {
 	mRenderer = renderer;
 }
+#endif
 
-int MSWP8Dis::nalusToFrame(MSQueue *nalus, bool *new_sps_pps)
+int MSWinRTDis::nalusToFrame(MSQueue *nalus, bool *new_sps_pps)
 {
 	mblk_t *im;
 	uint8_t *dst, *src, *end;
@@ -303,62 +316,62 @@ int MSWP8Dis::nalusToFrame(MSQueue *nalus, bool *new_sps_pps)
 	return dst - mBitstream;
 }
 
-void MSWP8Dis::enlargeBitstream(int newSize)
+void MSWinRTDis::enlargeBitstream(int newSize)
 {
 	mBitstreamSize = newSize;
 	mBitstream = (uint8_t *)ms_realloc(mBitstream, mBitstreamSize);
 }
 
-bool MSWP8Dis::checkSPSChange(mblk_t *sps)
+bool MSWinRTDis::checkSPSChange(mblk_t *sps)
 {
 	bool ret = false;
 	if (mSPS) {
 		ret = (msgdsize(sps) != msgdsize(mSPS)) || (memcmp(mSPS->b_rptr, mSPS->b_rptr, msgdsize(sps)) != 0);
 		if (ret) {
-			ms_message("[MSWP8Dis] SPS changed ! %i,%i", msgdsize(sps), msgdsize(mSPS));
+			ms_message("[MSWinRTDis] SPS changed ! %i,%i", msgdsize(sps), msgdsize(mSPS));
 			updateSPS(sps);
 			updatePPS(nullptr);
 		}
 	} else {
-		ms_message("[MSWP8Dis] Receiving first SPS");
+		ms_message("[MSWinRTDis] Receiving first SPS");
 		updateSPS(sps);
 		ret = true;
 	}
 	return ret;
 }
 
-bool MSWP8Dis::checkPPSChange(mblk_t *pps)
+bool MSWinRTDis::checkPPSChange(mblk_t *pps)
 {
 	bool ret = false;
 	if (mPPS) {
 		ret = (msgdsize(pps) != msgdsize(mPPS)) || (memcmp(mPPS->b_rptr, pps->b_rptr, msgdsize(pps)) != 0);
 		if (ret) {
-			ms_message("[MSWP8Dis] PPS changed ! %i,%i", msgdsize(pps), msgdsize(mPPS));
+			ms_message("[MSWinRTDis] PPS changed ! %i,%i", msgdsize(pps), msgdsize(mPPS));
 			updatePPS(pps);
 		}
 	} else {
-		ms_message("[MSWP8Dis] Receiving first PPS");
+		ms_message("[MSWinRTDis] Receiving first PPS");
 		updatePPS(pps);
 		ret = true;
 	}
 	return ret;
 }
 
-void MSWP8Dis::updateSPS(mblk_t *sps)
+void MSWinRTDis::updateSPS(mblk_t *sps)
 {
 	if (mSPS) freemsg(mSPS);
 	mSPS = dupb(sps);
 	updateVideoSizeFromSPS();
 }
 
-void MSWP8Dis::updatePPS(mblk_t *pps)
+void MSWinRTDis::updatePPS(mblk_t *pps)
 {
 	if (mPPS) freemsg(mPPS);
 	if (pps) mPPS = dupb(pps);
 	else mPPS = nullptr;
 }
 
-void MSWP8Dis::updateVideoSizeFromSPS()
+void MSWinRTDis::updateVideoSizeFromSPS()
 {
 	uint8_t *data = (uint8_t *)mSPS->b_rptr;
 	uint32_t bit_offset = 8;	// Skip nal header, we know if it is only 1 byte long since it is an SPS
@@ -411,6 +424,6 @@ void MSWP8Dis::updateVideoSizeFromSPS()
 	pic_height_in_map_units_minus1 = get_ue_at_bit_offset(data, &bit_offset);
  	mWidth = (pic_width_in_mbs_minus1 + 1) * 16;
  	mHeight = (pic_height_in_map_units_minus1 + 1) * 16;
-	ms_message("[MSWP8Dis] Change video size from SPS: %ux%u", mWidth, mHeight);
+	ms_message("[MSWinRTDis] Change video size from SPS: %ux%u", mWidth, mHeight);
 	MS_UNUSED(dummy);
 }
