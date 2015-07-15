@@ -24,10 +24,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #pragma once
 
 
-#include <mediastreamer2/mscommon.h>
-#include <mediastreamer2/msfilter.h>
-#include <mediastreamer2/msticker.h>
-#include <mediastreamer2/msvideo.h>
+#include "mswinrtvid.h"
+
 #include <mediastreamer2/rfc3984.h>
 
 #ifdef MS2_WINDOWS_PHONE
@@ -41,51 +39,48 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #endif
 
 
-namespace mswinrtvid
-{
-	class MSWinRTDis {
-	public:
-		MSWinRTDis();
-		virtual ~MSWinRTDis();
+class MSWinRTDis {
+public:
+	MSWinRTDis();
+	virtual ~MSWinRTDis();
 
-		int activate();
-		int deactivate();
-		bool isStarted() { return mIsStarted; }
-		void start();
-		void stop();
-		int feed(MSFilter *f);
-		MSVideoSize getVideoSize();
-		void setVideoSize(MSVideoSize vs);
-		void setPixFmt(MSPixFmt pix_fmt) { mPixFmt = pix_fmt; }
+	int activate();
+	int deactivate();
+	bool isStarted() { return mIsStarted; }
+	void start();
+	void stop();
+	int feed(MSFilter *f);
+	MSVideoSize getVideoSize();
+	void setVideoSize(MSVideoSize vs);
+	void setPixFmt(MSPixFmt pix_fmt) { mPixFmt = pix_fmt; }
 #ifdef MS2_WINDOWS_PHONE
-		Mediastreamer2::WinRTVideo::IVideoRenderer^ getVideoRenderer();
-		void setVideoRenderer(Mediastreamer2::WinRTVideo::IVideoRenderer^ renderer);
+	Mediastreamer2::WinRTVideo::IVideoRenderer^ getVideoRenderer();
+	void setVideoRenderer(Mediastreamer2::WinRTVideo::IVideoRenderer^ renderer);
 #endif
 
-	private:
-		int nalusToFrame(MSQueue *nalus, bool *new_sps_pps);
-		void enlargeBitstream(int newSize);
-		bool checkSPSChange(mblk_t *sps);
-		bool checkPPSChange(mblk_t *pps);
-		void updateSPS(mblk_t *sps);
-		void updatePPS(mblk_t *pps);
-		void updateVideoSizeFromSPS();
+private:
+	int nalusToFrame(MSQueue *nalus, bool *new_sps_pps);
+	void enlargeBitstream(int newSize);
+	bool checkSPSChange(mblk_t *sps);
+	bool checkPPSChange(mblk_t *pps);
+	void updateSPS(mblk_t *sps);
+	void updatePPS(mblk_t *pps);
+	void updateVideoSizeFromSPS();
 
-		static bool smInstantiated;
-		bool mIsInitialized;
-		bool mIsActivated;
-		bool mIsStarted;
-		int mWidth;
-		int mHeight;
-		Rfc3984Context *mRfc3984Unpacker;
-		MSPixFmt mPixFmt;
-		int mBitstreamSize;
-		uint8_t *mBitstream;
-		mblk_t *mSPS;
-		mblk_t *mPPS;
+	static bool smInstantiated;
+	bool mIsInitialized;
+	bool mIsActivated;
+	bool mIsStarted;
+	int mWidth;
+	int mHeight;
+	Rfc3984Context *mRfc3984Unpacker;
+	MSPixFmt mPixFmt;
+	int mBitstreamSize;
+	uint8_t *mBitstream;
+	mblk_t *mSPS;
+	mblk_t *mPPS;
 #ifdef MS2_WINDOWS_PHONE
-		Mediastreamer2::WinRTVideo::IVideoRenderer^ mRenderer;
+	Mediastreamer2::WinRTVideo::IVideoRenderer^ mRenderer;
 #endif
-		bool mFirstFrameReceived;
-	};
-}
+	bool mFirstFrameReceived;
+};

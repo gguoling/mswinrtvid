@@ -42,6 +42,7 @@
   <ItemGroup>
     <ClInclude Include="..\..\mswinrtcap.h" />
     <ClInclude Include="..\..\mswinrtdis.h" />
+    <ClInclude Include="..\..\mswinrtvid.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{2d0e44c4-e51d-4911-b876-345d1e5e5209}</ProjectGuid>

@@ -25,10 +25,13 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 using namespace Microsoft::WRL;
 using namespace Windows::Foundation;
+#ifdef MS2_WINDOWS_UNIVERSAL
+using namespace Windows::Devices::Enumeration;
+using namespace Windows::Storage;
+#endif
 #ifdef MS2_WINDOWS_PHONE
 using namespace Windows::Phone::Media::Capture;
 #endif
-using namespace mswinrtvid;
 
 
 static const float defaultFps = 15.0f;
@@ -73,6 +76,13 @@ MSWinRTCap::MSWinRTCap()
 		ms_error("[MSWinRTCap] Could not create activation event [%i]", GetLastError());
 		return;
 	}
+#ifdef MS2_WINDOWS_UNIVERSAL
+	mPreviewStartCompleted = CreateEventEx(NULL, L"Local\\MSWinRTCapPreviewStart", 0, EVENT_ALL_ACCESS);
+	if (!mPreviewStartCompleted) {
+		ms_error("[MSWinRTCap] Could not create preview start event [%i]", GetLastError());
+		return;
+	}
+#endif
 	mStartCompleted = CreateEventEx(NULL, L"Local\\MSWinRTCapStart", 0, EVENT_ALL_ACCESS);
 	if (!mStartCompleted) {
 		ms_error("[MSWinRTCap] Could not create start event [%i]", GetLastError());
@@ -96,6 +106,12 @@ MSWinRTCap::~MSWinRTCap()
 		CloseHandle(mStopCompleted);
 		mStopCompleted = NULL;
 	}
+#ifdef MS2_WINDOWS_UNIVERSAL
+	if (mPreviewStartCompleted) {
+		CloseHandle(mPreviewStartCompleted);
+		mPreviewStartCompleted = NULL;
+	}
+#endif
 	if (mStartCompleted) {
 		CloseHandle(mStartCompleted);
 		mStartCompleted = NULL;
@@ -115,15 +131,48 @@ MSWinRTCap::~MSWinRTCap()
 
 int MSWinRTCap::activate()
 {
-#ifdef MS2_WINDOWS_PHONE
-	IAsyncOperation<AudioVideoCaptureDevice^> ^openOperation = nullptr;
-
 	if (!mIsInitialized) return -1;
 
 	mRfc3984Packer = rfc3984_new();
 	rfc3984_set_mode(mRfc3984Packer, mPackerMode);
 	rfc3984_enable_stap_a(mRfc3984Packer, FALSE);
 	ms_video_starter_init(&mStarter);
+
+#if defined(MS2_WINDOWS_UNIVERSAL)
+	mCapture = ref new MediaCapture();
+	MediaCaptureInitializationSettings^ initSettings = ref new MediaCaptureInitializationSettings();
+	//initSettings->MediaCategory = MediaCategory::Communications;
+	initSettings->VideoDeviceId = mDeviceId;
+	initSettings->StreamingCaptureMode = StreamingCaptureMode::Video;
+	IAsyncAction^ initAction = mCapture->InitializeAsync(initSettings);
+	initAction->Completed = ref new AsyncActionCompletedHandler([this](IAsyncAction^ asyncInfo, AsyncStatus asyncStatus) {
+		switch (asyncStatus) {
+		case AsyncStatus::Completed:
+			ms_message("[MSWinRTCap] InitializeAsync completed");
+			configure();
+			applyVideoSize();
+			applyFps();
+			mIsActivated = true;
+			break;
+		case AsyncStatus::Canceled:
+			ms_warning("[MSWinRTCap] InitializeAsync has been canceled");
+			break;
+		case AsyncStatus::Error:
+			ms_error("[MSWinRTCap] InitializeAsync failed [0x%x]", asyncInfo->ErrorCode);
+			break;
+		default:
+			break;
+		}
+		SetEvent(mActivationCompleted);
+	});
+
+	WaitForSingleObjectEx(mActivationCompleted, INFINITE, FALSE);
+	if (mIsActivated && (mCaptureElement != nullptr)) {
+		mCaptureElement->Source = mCapture.Get();
+		mStream = ref new Streams::InMemoryRandomAccessStream();
+	}
+#elif defined(MS2_WINDOWS_PHONE)
+	IAsyncOperation<AudioVideoCaptureDevice^> ^openOperation = nullptr;
 
 	Size dimensions;
 	dimensions.Width = (float)mVConf.vsize.width;
@@ -180,8 +229,53 @@ int MSWinRTCap::deactivate()
 
 void MSWinRTCap::start()
 {
-#ifdef MS2_WINDOWS_PHONE
 	if (!mIsStarted && mIsActivated) {
+#if defined(MS2_WINDOWS_UNIVERSAL)
+		IAsyncAction^ previewAction = mCapture->StartPreviewAsync();
+		previewAction->Completed = ref new AsyncActionCompletedHandler([this](IAsyncAction^ asyncAction, AsyncStatus asyncStatus) {
+			switch (asyncStatus) {
+			case AsyncStatus::Completed:
+				ms_message("[MSWinRTCap] StartRecordToStreamAsync completed");
+				mIsStarted = true;
+				break;
+			case AsyncStatus::Canceled:
+				ms_error("[MSWinRTCap] StartRecordToStreamAsync has been cancelled");
+				break;
+			case AsyncStatus::Error:
+			{
+				int res = asyncAction->ErrorCode.Value;
+				ms_error("[MSWinRTCap] StartRecordToStreamAsync failed [0x%x]", res);
+			}
+			break;
+			default:
+				break;
+			}
+			SetEvent(mPreviewStartCompleted);
+		});
+		WaitForSingleObjectEx(mPreviewStartCompleted, INFINITE, FALSE);
+
+		IAsyncAction^ recordAction = mCapture->StartRecordToStreamAsync(mEncodingProfile, mStream);
+		recordAction->Completed = ref new AsyncActionCompletedHandler([this](IAsyncAction^ asyncAction, AsyncStatus asyncStatus) {
+			switch (asyncStatus) {
+			case AsyncStatus::Completed:
+				ms_message("[MSWinRTCap] StartRecordToStreamAsync completed");
+				mIsStarted = true;
+				break;
+			case AsyncStatus::Canceled:
+				ms_error("[MSWinRTCap] StartRecordToStreamAsync has been cancelled");
+				break;
+			case AsyncStatus::Error:
+			{
+				int res = asyncAction->ErrorCode.Value;
+				ms_error("[MSWinRTCap] StartRecordToStreamAsync failed [0x%x]", res);
+			}
+				break;
+			default:
+				break;
+			}
+			SetEvent(mStartCompleted);
+		});
+#elif defined(MS2_WINDOWS_PHONE)
 		mVideoDevice->StartRecordingToSinkAsync()->Completed = ref new AsyncActionCompletedHandler([this] (IAsyncAction ^asyncAction, Windows::Foundation::AsyncStatus status) {
 			switch (status) {
 			case Windows::Foundation::AsyncStatus::Completed:
@@ -203,9 +297,9 @@ void MSWinRTCap::start()
 #if 0
 		printProperties();
 #endif
+#endif
 		WaitForSingleObjectEx(mStartCompleted, INFINITE, FALSE);
 	}
-#endif
 }
 
 void MSWinRTCap::stop()
@@ -339,12 +433,12 @@ void MSWinRTCap::OnSampleAvailable(ULONGLONG hnsPresentationTime, ULONGLONG hnsS
 }
 
 
+#ifdef MS2_WINDOWS_PHONE
 void MSWinRTCap::setCameraLocation(uint32 location)
 {
-#ifdef MS2_WINDOWS_PHONE
 	mCameraLocation = (CameraSensorLocation)location;
-#endif
 }
+#endif
 
 void MSWinRTCap::setFps(float fps)
 {
@@ -426,7 +520,9 @@ void MSWinRTCap::requestIdrFrame()
 
 void MSWinRTCap::applyFps()
 {
-#ifdef MS2_WINDOWS_PHONE
+#if defined(MS2_WINDOWS_UNIVERSAL)
+	// TODO: It appears there is no way to define the framerate
+#elif defined(MS2_WINDOWS_PHONE)
 	// WARNING: Do not change the FPS while the capture is active. The SetProperty call does not return in this case!
 	if (mVideoDevice && !mIsActivated) {
 		uint32 value = (uint32)mVConf.fps;
@@ -443,11 +539,14 @@ void MSWinRTCap::applyFps()
 
 void MSWinRTCap::applyVideoSize()
 {
+#if defined(MS2_WINDOWS_UNIVERSAL)
+	/*mEncodingProfile->Video->Width = mVConf.vsize.width;
+	mEncodingProfile->Video->Height = mVConf.vsize.height;*/
+#elif defined(MS2_WINDOWS_PHONE)
 	IAsyncAction^ action = nullptr;
 	Size dimensions;
 	dimensions.Width = (float)mVConf.vsize.width;
 	dimensions.Height = (float)mVConf.vsize.height;
-#ifdef MS2_WINDOWS_PHONE
 	action = mVideoDevice->SetCaptureResolutionAsync(dimensions);
 	action->Completed = ref new AsyncActionCompletedHandler([this] (IAsyncAction^ action, Windows::Foundation::AsyncStatus status) {
 		if (status == Windows::Foundation::AsyncStatus::Completed) {
@@ -496,6 +595,27 @@ void MSWinRTCap::bitstreamToMsgb(uint8_t *encoded_buf, size_t size, MSQueue *nal
 
 bool MSWinRTCap::selectBestVideoSize()
 {
+#if defined(MS2_WINDOWS_UNIVERSAL)
+	MSVideoSize requestedSize;
+	requestedSize.width = mVConf.vsize.width;
+	requestedSize.height = mVConf.vsize.height;
+	MediaCapture^ mediaCapture = ref new MediaCapture();
+	if (MediaCapture::IsVideoProfileSupported(mDeviceId)) {
+		Collections::IVectorView<MediaCaptureVideoProfile^>^ profiles = mediaCapture->FindAllVideoProfiles(mDeviceId);
+		for (unsigned int i = 0; i < profiles->Size; i++) {
+			MediaCaptureVideoProfile^ profile = profiles->GetAt(i);
+			Collections::IVectorView<MediaCaptureVideoProfileMediaDescription^>^ descriptions = profile->SupportedRecordMediaDescription;
+			for (unsigned int j = 0; j < descriptions->Size; j++) {
+				MediaCaptureVideoProfileMediaDescription^ description = descriptions->GetAt(j);
+			}
+		}
+	} else {
+		ms_warning("[MSWinRTCap] Video profile is not supported by the camera, default to requested video size");
+		mVConf.vsize.width = requestedSize.width;
+		mVConf.vsize.height = requestedSize.height;
+		return false;
+	}
+#elif defined(MS2_WINDOWS_PHONE)
 	Collections::IVectorView<Size> ^availableSizes;
 	Collections::IIterator<Size> ^availableSizesIterator;
 	MSVideoSize requestedSize;
@@ -505,7 +625,6 @@ bool MSWinRTCap::selectBestVideoSize()
 	bestFoundSize.width = bestFoundSize.height = 0;
 	requestedSize.width = mVConf.vsize.width;
 	requestedSize.height = mVConf.vsize.height;
-#ifdef MS2_WINDOWS_PHONE
 	availableSizes = AudioVideoCaptureDevice::GetAvailableCaptureResolutions(mCameraLocation);
 	availableSizesIterator = availableSizes->First();
 	while (availableSizesIterator->HasCurrent) {
@@ -530,23 +649,33 @@ bool MSWinRTCap::selectBestVideoSize()
 		mVConf.vsize.height = minSize.height;
 		return false;
 	}
-#endif
 
 	mVConf.vsize.width = bestFoundSize.width;
 	mVConf.vsize.height = bestFoundSize.height;
 	ms_message("[MSWinRTCap] Best video size is %ix%i", bestFoundSize.width, bestFoundSize.height);
+#endif
 	return true;
 }
 
 void MSWinRTCap::configure()
 {
+#if defined(MS2_WINDOWS_UNIVERSAL)
+	mEncodingProfile = ref new MediaEncodingProfile();
+	if (mPixFmt == MS_H264) {
+		mEncodingProfile->Video = VideoEncodingProperties::CreateH264();
+		/*mEncodingProfile->Video->ProfileId = H264ProfileIds::Baseline;
+		mEncodingProfile->Video->Width = mVConf.vsize.width;
+		mEncodingProfile->Video->Height = mVConf.vsize.height;*/
+	} else {
+		mEncodingProfile->Video = VideoEncodingProperties::CreateUncompressed(MediaEncodingSubtypes::Nv12, mVConf.vsize.width, mVConf.vsize.height);
+	}
+#elif defined(MS2_WINDOWS_PHONE)
 	bool unMuteAudio = true;
 	bool supportH264BaselineProfile = false;
 	Platform::Object^ boxedSensorRotation;
 	Collections::IVectorView<Platform::Object^>^ values;
 	Collections::IIterator<Platform::Object^> ^valuesIterator;
 
-#ifdef MS2_WINDOWS_PHONE
 	// Configure the sensor rotation for the capture
 	if (mCameraLocation == CameraSensorLocation::Front) {
 		boxedSensorRotation = (360 - mCameraSensorRotation + 360 - mDeviceOrientation) % 360;
@@ -610,10 +739,65 @@ void MSWinRTCap::configure()
 #endif
 }
 
+#ifdef MS2_WINDOWS_UNIVERSAL
+void MSWinRTCap::addCamera(MSWebCamManager *manager, MSWebCamDesc *desc, Platform::String^ DeviceId, Platform::String^ DeviceName)
+{
+	size_t returnlen;
+	size_t inputlen = wcslen(DeviceName->Data()) + 1;
+	char *name = (char *)ms_malloc(inputlen);
+	if (wcstombs_s(&returnlen, name, inputlen, DeviceName->Data(), inputlen) != 0) {
+		ms_error("MSWinRTCap: Cannot convert webcam name to multi-byte string.");
+		goto error;
+	}
+
+	MSWebCam *cam = ms_web_cam_new(desc);
+	cam->name = ms_strdup(name);
+	const wchar_t *id = DeviceId->Data();
+	WinRTWebcam *winrtwebcam = new WinRTWebcam();
+	winrtwebcam->id_vector = new std::vector<wchar_t>(wcslen(id) + 1);
+	wcscpy_s(&winrtwebcam->id_vector->front(), winrtwebcam->id_vector->size(), id);
+	winrtwebcam->id = &winrtwebcam->id_vector->front();
+	cam->data = winrtwebcam;
+	ms_web_cam_manager_prepend_cam(manager, cam);
+
+error:
+	ms_free(name);
+}
+#endif
 
 void MSWinRTCap::detectCameras(MSWebCamManager *manager, MSWebCamDesc *desc)
 {
-#ifdef MS2_WINDOWS_PHONE
+#if defined(MS2_WINDOWS_UNIVERSAL)
+	HANDLE eventCompleted = CreateEventEx(NULL, NULL, 0, EVENT_ALL_ACCESS);
+	if (!eventCompleted) {
+		ms_error("[MSWinRTCap] Could not create camera detection event [%i]", GetLastError());
+		return;
+	}
+	IAsyncOperation<DeviceInformationCollection^>^ enumOperation = DeviceInformation::FindAllAsync(DeviceClass::VideoCapture);
+	enumOperation->Completed = ref new AsyncOperationCompletedHandler<DeviceInformationCollection^>([manager, desc, eventCompleted](IAsyncOperation<DeviceInformationCollection^>^ asyncOperation, AsyncStatus asyncStatus) {
+		if (asyncStatus == AsyncStatus::Completed) {
+			DeviceInformationCollection^ DeviceInfoCollection = asyncOperation->GetResults();
+			if ((DeviceInfoCollection == nullptr) || (DeviceInfoCollection->Size == 0)) {
+				ms_error("[MSWinRTCap] No webcam found");
+			}
+			else {
+				try {
+					for (unsigned int i = 0; i < DeviceInfoCollection->Size; i++) {
+						DeviceInformation^ DeviceInfo = DeviceInfoCollection->GetAt(i);
+						addCamera(manager, desc, DeviceInfo->Id, DeviceInfo->Name);
+					}
+				}
+				catch (Platform::Exception^ e) {
+					ms_error("[MSWinRTCap] Error of webcam detection");
+				}
+			}
+		} else {
+			ms_error("[MSWinRTCap] Cannot enumerate webcams");
+		}
+		SetEvent(eventCompleted);
+	});
+	WaitForSingleObjectEx(eventCompleted, INFINITE, FALSE);
+#elif defined(MS2_WINDOWS_PHONE)
 	Collections::IVectorView<CameraSensorLocation> ^availableSensorLocations;
 	Collections::IIterator<CameraSensorLocation> ^availableSensorLocationsIterator;
 	MSList *camlist = NULL;

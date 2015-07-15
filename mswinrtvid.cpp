@@ -27,15 +27,16 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "mswinrtcap.h"
 #include "mswinrtdis.h"
+#ifdef MS2_WINDOWS_PHONE
 #include "IVideoRenderer.h"
+#endif
 
 
-using namespace mswinrtvid;
 //using namespace Mediastreamer2::WinRTVideo;
 
 
 /******************************************************************************
- * Methods to (de)initialize and run the WP8 video capture filter             *
+ * Methods to (de)initialize and run the WinRT video capture filter           *
  *****************************************************************************/
 
 static void ms_winrtcap_read_init(MSFilter *f) {
@@ -69,7 +70,7 @@ static void ms_winrtcap_read_uninit(MSFilter *f) {
 
 
 /******************************************************************************
- * Methods to configure the Windows Phone 8 video capture filter              *
+ * Methods to configure the WinRT video capture filter                        *
  *****************************************************************************/
 
 static int ms_winrtcap_get_fps(MSFilter *f, void *arg) {
@@ -157,27 +158,38 @@ static int ms_winrtcap_set_device_orientation(MSFilter *f, void *arg) {
 	return 0;
 }
 
+static int ms_winrtcap_set_native_window_id(MSFilter *f, void *arg) {
+#ifdef MS2_WINDOWS_UNIVERSAL
+	MSWinRTCap *r = static_cast<MSWinRTCap *>(f->data);
+	RefToPtrProxy<Platform::Object^> *proxy = static_cast<RefToPtrProxy<Platform::Object^>*>((void *)(*((PULONG_PTR)arg)));
+	Windows::UI::Xaml::Controls::CaptureElement^ captureElement = dynamic_cast<Windows::UI::Xaml::Controls::CaptureElement^>(proxy->Ref());
+	r->setCaptureElement(captureElement);
+#endif
+	return 0;
+}
+
 static MSFilterMethod ms_winrtcap_read_methods[] = {
-	{	MS_FILTER_GET_FPS,			ms_winrtcap_get_fps		},
-	{	MS_FILTER_SET_FPS,			ms_winrtcap_set_fps		},
-	{	MS_FILTER_GET_PIX_FMT,		ms_winrtcap_get_pix_fmt	},
-	{	MS_FILTER_SET_PIX_FMT,		ms_winrtcap_set_pix_fmt	},
-	{	MS_FILTER_GET_VIDEO_SIZE,	ms_winrtcap_get_vsize		},
-	{	MS_FILTER_SET_VIDEO_SIZE,	ms_winrtcap_set_vsize		},
-	{	MS_FILTER_GET_BITRATE,		ms_winrtcap_get_bitrate	},
-	{	MS_FILTER_SET_BITRATE,		ms_winrtcap_set_bitrate	},
-	{	MS_FILTER_REQ_VFU,			ms_winrtcap_req_vfu		},
-	{	MS_VIDEO_ENCODER_REQ_VFU,	ms_winrtcap_req_vfu		},
-	{	MS_VIDEO_ENCODER_GET_CONFIGURATION_LIST, ms_winrtcap_get_configuration_list },
-	{	MS_VIDEO_ENCODER_SET_CONFIGURATION,	ms_winrtcap_set_configuration },
-	{	MS_VIDEO_CAPTURE_GET_CAMERA_SENSOR_ROTATION,	ms_winrtcap_get_camera_sensor_rotation	},
-	{	MS_VIDEO_CAPTURE_SET_DEVICE_ORIENTATION,	ms_winrtcap_set_device_orientation	},
-	{	0,							NULL					}
+	{ MS_FILTER_GET_FPS,                           ms_winrtcap_get_fps                    },
+	{ MS_FILTER_SET_FPS,                           ms_winrtcap_set_fps                    },
+	{ MS_FILTER_GET_PIX_FMT,                       ms_winrtcap_get_pix_fmt                },
+	{ MS_FILTER_SET_PIX_FMT,                       ms_winrtcap_set_pix_fmt                },
+	{ MS_FILTER_GET_VIDEO_SIZE,                    ms_winrtcap_get_vsize                  },
+	{ MS_FILTER_SET_VIDEO_SIZE,                    ms_winrtcap_set_vsize                  },
+	{ MS_FILTER_GET_BITRATE,                       ms_winrtcap_get_bitrate                },
+	{ MS_FILTER_SET_BITRATE,                       ms_winrtcap_set_bitrate                },
+	{ MS_FILTER_REQ_VFU,                           ms_winrtcap_req_vfu                    },
+	{ MS_VIDEO_ENCODER_REQ_VFU,                    ms_winrtcap_req_vfu                    },
+	{ MS_VIDEO_ENCODER_GET_CONFIGURATION_LIST,     ms_winrtcap_get_configuration_list     },
+	{ MS_VIDEO_ENCODER_SET_CONFIGURATION,          ms_winrtcap_set_configuration          },
+	{ MS_VIDEO_CAPTURE_GET_CAMERA_SENSOR_ROTATION, ms_winrtcap_get_camera_sensor_rotation },
+	{ MS_VIDEO_CAPTURE_SET_DEVICE_ORIENTATION,     ms_winrtcap_set_device_orientation     },
+	{ MS_VIDEO_DISPLAY_SET_NATIVE_WINDOW_ID,       ms_winrtcap_set_native_window_id       },
+	{ 0,                                           NULL                                   }
 };
 
 
 /******************************************************************************
- * Definition of the Windows Phone 8 video capture filter                     *
+ * Definition of the WinRT video capture filter                               *
  *****************************************************************************/
 
 #define MS_WINRTCAP_READ_ID			MS_FILTER_PLUGIN_ID
@@ -211,7 +223,7 @@ MS_FILTER_DESC_EXPORT(ms_winrtcap_read_desc)
 
 
 /******************************************************************************
- * Definition of the Windows Phone 8 video camera detection                   *
+ * Definition of the WinRT video camera detection                             *
  *****************************************************************************/
 
 static void ms_winrtcap_detect(MSWebCamManager *m);
@@ -219,7 +231,12 @@ static void ms_winrtcap_detect(MSWebCamManager *m);
 static MSFilter *ms_winrtcap_create_reader(MSWebCam *cam) {
 	MSFilter *f = ms_filter_new_from_desc(&ms_winrtcap_read_desc);
 	MSWinRTCap *r = static_cast<MSWinRTCap *>(f->data);
+#if defined(MS2_WINDOWS_UNIVERSAL)
+	WinRTWebcam* winrtcam = static_cast<WinRTWebcam *>(cam->data);
+	r->setDeviceId(ref new Platform::String(winrtcam->id));
+#elif defined(MS2_WINDOWS_PHONE)
 	r->setCameraLocation((uint32)cam->data);
+#endif
 	return f;
 }
 
@@ -245,7 +262,7 @@ static void ms_winrtcap_detect(MSWebCamManager *m) {
 
 
 /******************************************************************************
- * Methods to (de)initialize and run the WP8 video display filter             *
+ * Methods to (de)initialize and run the WinRT video display filter           *
  *****************************************************************************/
 
 static void ms_winrtdis_init(MSFilter *f) {
@@ -281,7 +298,7 @@ static void ms_winrtdis_uninit(MSFilter *f) {
 
 
 /******************************************************************************
- * Methods to configure the Windows Phone 8 video display filter              *
+ * Methods to configure the WinRT video display filter                        *
  *****************************************************************************/
 
 static int ms_winrtdis_get_vsize(MSFilter *f, void *arg) {
@@ -312,16 +329,6 @@ static int ms_winrtdis_support_rendering(MSFilter *f, void *arg) {
 	return 0;
 }
 
-template <class T> class RefToPtrProxy
-{
-public:
-	RefToPtrProxy(T obj) : mObj(obj) {}
-	~RefToPtrProxy() { mObj = nullptr; }
-	T Ref() { return mObj; }
-private:
-	T mObj;
-};
-
 static int ms_winrtdis_set_native_window_id(MSFilter *f, void *arg) {
 	MSWinRTDis *w = static_cast<MSWinRTDis *>(f->data);
 	unsigned long *ptr = (unsigned long *)arg;
@@ -334,22 +341,22 @@ static int ms_winrtdis_set_native_window_id(MSFilter *f, void *arg) {
 }
 
 static MSFilterMethod ms_winrtdis_methods[] = {
-	{	MS_FILTER_GET_VIDEO_SIZE,				ms_winrtdis_get_vsize				},
-	{	MS_FILTER_SET_VIDEO_SIZE,				ms_winrtdis_set_vsize				},
-	{	MS_FILTER_SET_PIX_FMT,					ms_winrtdis_set_pix_fmt			},
-	{	MS_VIDEO_DECODER_SUPPORT_RENDERING,		ms_winrtdis_support_rendering		},
-	{	MS_VIDEO_DISPLAY_SET_NATIVE_WINDOW_ID,	ms_winrtdis_set_native_window_id	},
-	{	0,										NULL							}
+	{ MS_FILTER_GET_VIDEO_SIZE,              ms_winrtdis_get_vsize            },
+	{ MS_FILTER_SET_VIDEO_SIZE,              ms_winrtdis_set_vsize            },
+	{ MS_FILTER_SET_PIX_FMT,                 ms_winrtdis_set_pix_fmt          },
+	{ MS_VIDEO_DECODER_SUPPORT_RENDERING,    ms_winrtdis_support_rendering    },
+	{ MS_VIDEO_DISPLAY_SET_NATIVE_WINDOW_ID, ms_winrtdis_set_native_window_id },
+	{ 0,                                     NULL                             }
 };
 
 
 /******************************************************************************
- * Definition of the Windows Phone 8 video display filter                     *
+ * Definition of the WinRT video display filter                               *
  *****************************************************************************/
 
 #define MS_WINRTDIS_ID			MS_FILTER_PLUGIN_ID
 #define MS_WINRTDIS_NAME			"MSWinRTDis"
-#define MS_WINRTDIS_DESCRIPTION	"Windows Phone 8 video display"
+#define MS_WINRTDIS_DESCRIPTION	"WinRT video display"
 #define MS_WINRTDIS_CATEGORY		MS_FILTER_DECODER_RENDERER
 #define MS_WINRTDIS_ENC_FMT		"H264"
 #define MS_WINRTDIS_NINPUTS		2
