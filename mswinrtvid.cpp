@@ -32,7 +32,10 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #endif
 
 
-//using namespace Mediastreamer2::WinRTVideo;
+using namespace libmswinrtvid;
+#ifdef MS2_WINDOWS_PHONE
+using namespace Mediastreamer2::WinRTVideo;
+#endif
 
 
 /******************************************************************************
@@ -273,13 +276,18 @@ static void ms_winrtdis_init(MSFilter *f) {
 static void ms_winrtdis_preprocess(MSFilter *f) {
 	MSWinRTDis *w = static_cast<MSWinRTDis *>(f->data);
 	w->activate();
+#ifdef MS2_WINDOWS_UNIVERSAL
+	w->start();
+#endif
 }
 
 static void ms_winrtdis_process(MSFilter *f) {
 	MSWinRTDis *w = static_cast<MSWinRTDis *>(f->data);
+#ifdef MS2_WINDOWS_PHONE
 	if (!w->isStarted()) {
 		w->start();
 	}
+#endif
 	if (w->isStarted()) {
 		w->feed(f);
 	}
@@ -329,10 +337,20 @@ static int ms_winrtdis_support_rendering(MSFilter *f, void *arg) {
 	return 0;
 }
 
+static int ms_winrtdis_enable_avpf(MSFilter *f, void *arg) {
+	MSWinRTDis *w = static_cast<MSWinRTDis *>(f->data);
+	w->enableAVPF(*((bool_t *)arg) ? true : false);
+	return 0;
+}
+
 static int ms_winrtdis_set_native_window_id(MSFilter *f, void *arg) {
 	MSWinRTDis *w = static_cast<MSWinRTDis *>(f->data);
+#if defined(MS2_WINDOWS_UNIVERSAL)
+	RefToPtrProxy<Platform::Object^> *proxy = static_cast<RefToPtrProxy<Platform::Object^>*>((void *)(*((PULONG_PTR)arg)));
+	Windows::UI::Xaml::Controls::MediaElement^ mediaElement = dynamic_cast<Windows::UI::Xaml::Controls::MediaElement^>(proxy->Ref());
+	w->setMediaElement(mediaElement);
+#elif defined(MS2_WINDOWS_PHONE)
 	unsigned long *ptr = (unsigned long *)arg;
-#ifdef MS2_WINDOWS_PHONE
 	RefToPtrProxy<IVideoRenderer^> *proxy = reinterpret_cast< RefToPtrProxy<IVideoRenderer^> *>(*ptr);
 	IVideoRenderer^ renderer = (proxy) ? proxy->Ref() : nullptr;
 	w->setVideoRenderer(renderer);
@@ -345,6 +363,7 @@ static MSFilterMethod ms_winrtdis_methods[] = {
 	{ MS_FILTER_SET_VIDEO_SIZE,              ms_winrtdis_set_vsize            },
 	{ MS_FILTER_SET_PIX_FMT,                 ms_winrtdis_set_pix_fmt          },
 	{ MS_VIDEO_DECODER_SUPPORT_RENDERING,    ms_winrtdis_support_rendering    },
+	{ MS_VIDEO_DECODER_ENABLE_AVPF,          ms_winrtdis_enable_avpf          },
 	{ MS_VIDEO_DISPLAY_SET_NATIVE_WINDOW_ID, ms_winrtdis_set_native_window_id },
 	{ 0,                                     NULL                             }
 };

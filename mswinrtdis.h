@@ -28,59 +28,136 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include <mediastreamer2/rfc3984.h>
 
-#ifdef MS2_WINDOWS_PHONE
-#include <implements.h>
-#endif
+#include <collection.h>
+#include <ppltasks.h>
+#include <mutex>
 #include <robuffer.h>
 #include <windows.storage.streams.h>
 
-#ifdef MS2_WINDOWS_PHONE
-#include "IVideoRenderer.h"
+
+namespace libmswinrtvid
+{
+	class MSWinRTDis;
+
+	private ref class MSWinRTDisSample sealed
+	{
+	public:
+		MSWinRTDisSample(Windows::Storage::Streams::IBuffer^ pBuffer, UINT64 hnsPresentationTime)
+		{
+			this->Buffer = pBuffer;
+			this->PresentationTime = hnsPresentationTime;
+		}
+
+		property Windows::Storage::Streams::IBuffer^ Buffer
+		{
+			Windows::Storage::Streams::IBuffer^ get() { return mBuffer; };
+			void set(Windows::Storage::Streams::IBuffer^ value) { mBuffer = value; };
+		}
+
+		property UINT64 PresentationTime
+		{
+			UINT64 get() { return mPresentationTime; };
+			void set(UINT64 value) { mPresentationTime = value; };
+		}
+
+	private:
+		~MSWinRTDisSample() {};
+
+		Windows::Storage::Streams::IBuffer^ mBuffer;
+		UINT64 mPresentationTime;
+	};
+
+	private ref class MSWinRTDisSampleHandler sealed
+	{
+	public:
+		MSWinRTDisSampleHandler();
+		virtual ~MSWinRTDisSampleHandler();
+		void StartMediaElement();
+		void StopMediaElement();
+		void Feed(Windows::Storage::Streams::IBuffer^ pBuffer, UINT64 hnsPresentationTime);
+		void OnSampleRequested(Windows::Media::Core::MediaStreamSource ^sender, Windows::Media::Core::MediaStreamSourceSampleRequestedEventArgs ^args);
+		void RequestMediaElementRestart();
+
+		property unsigned int PixFmt
+		{
+			unsigned int get() { return mPixFmt; }
+			void set(unsigned int value) { mPixFmt = (MSPixFmt)value; }
+		}
+
+		property Windows::UI::Xaml::Controls::MediaElement^ MediaElement
+		{
+			Windows::UI::Xaml::Controls::MediaElement^ get() { return mMediaElement; }
+			void set(Windows::UI::Xaml::Controls::MediaElement^ value) { mMediaElement = value; }
+		}
+
+		property int Width
+		{
+			int get() { return mWidth; }
+			void set(int value) { mWidth = value; }
+		}
+
+		property int Height
+		{
+			int get() { return mHeight; }
+			void set(int value) { mHeight = value; }
+		}
+
+	private:
+		void AnswerSampleRequest(Windows::Media::Core::MediaStreamSourceSampleRequest^ sampleRequest);
+
+		Platform::Collections::Vector<MSWinRTDisSample^>^ mSampleQueue;
+		Windows::Media::Core::MediaStreamSourceSampleRequest^ mSampleRequest;
+		Windows::Media::Core::MediaStreamSourceSampleRequestDeferral^ mSampleRequestDeferral;
+		Windows::UI::Xaml::Controls::MediaElement^ mMediaElement;
+		std::mutex mMutex;
+		MSPixFmt mPixFmt;
+		int mWidth;
+		int mHeight;
+	};
+
+
+	class MSWinRTDis {
+	public:
+		MSWinRTDis();
+		virtual ~MSWinRTDis();
+
+		int activate();
+		int deactivate();
+		bool isStarted() { return mIsStarted; }
+		void start();
+		void stop();
+		int feed(MSFilter *f);
+		MSVideoSize getVideoSize();
+		void setVideoSize(MSVideoSize vs);
+		void setPixFmt(MSPixFmt pix_fmt) { mSampleHandler->PixFmt = pix_fmt; }
+		void enableAVPF(bool enable) { mAVPFEnabled = enable; }
+		void setMediaElement(Windows::UI::Xaml::Controls::MediaElement^ mediaElement) { mSampleHandler->MediaElement = mediaElement; }
+
+	private:
+		int nalusToFrame(MSQueue *nalus, bool *new_sps_pps);
+		void enlargeBitstream(int newSize);
+		bool checkSPSChange(mblk_t *sps);
+		bool checkPPSChange(mblk_t *pps);
+		void updateSPS(mblk_t *sps);
+		void updatePPS(mblk_t *pps);
+		void updateVideoSizeFromSPS();
+#if 0
+		void startMediaElement();
+		void stopMediaElement();
 #endif
 
-
-class MSWinRTDis {
-public:
-	MSWinRTDis();
-	virtual ~MSWinRTDis();
-
-	int activate();
-	int deactivate();
-	bool isStarted() { return mIsStarted; }
-	void start();
-	void stop();
-	int feed(MSFilter *f);
-	MSVideoSize getVideoSize();
-	void setVideoSize(MSVideoSize vs);
-	void setPixFmt(MSPixFmt pix_fmt) { mPixFmt = pix_fmt; }
-#ifdef MS2_WINDOWS_PHONE
-	Mediastreamer2::WinRTVideo::IVideoRenderer^ getVideoRenderer();
-	void setVideoRenderer(Mediastreamer2::WinRTVideo::IVideoRenderer^ renderer);
-#endif
-
-private:
-	int nalusToFrame(MSQueue *nalus, bool *new_sps_pps);
-	void enlargeBitstream(int newSize);
-	bool checkSPSChange(mblk_t *sps);
-	bool checkPPSChange(mblk_t *pps);
-	void updateSPS(mblk_t *sps);
-	void updatePPS(mblk_t *pps);
-	void updateVideoSizeFromSPS();
-
-	static bool smInstantiated;
-	bool mIsInitialized;
-	bool mIsActivated;
-	bool mIsStarted;
-	int mWidth;
-	int mHeight;
-	Rfc3984Context *mRfc3984Unpacker;
-	MSPixFmt mPixFmt;
-	int mBitstreamSize;
-	uint8_t *mBitstream;
-	mblk_t *mSPS;
-	mblk_t *mPPS;
-#ifdef MS2_WINDOWS_PHONE
-	Mediastreamer2::WinRTVideo::IVideoRenderer^ mRenderer;
-#endif
-	bool mFirstFrameReceived;
-};
+		static bool smInstantiated;
+		bool mIsInitialized;
+		bool mIsActivated;
+		bool mIsStarted;
+		Rfc3984Context *mRfc3984Unpacker;
+		int mBitstreamSize;
+		uint8_t *mBitstream;
+		mblk_t *mSPS;
+		mblk_t *mPPS;
+		bool mAVPFEnabled;
+		MSWinRTDisSampleHandler^ mSampleHandler;
+		Windows::Media::Core::MediaStreamSource^ mMediaStreamSource;
+		bool mFirstFrameReceived;
+	};
+}

@@ -141,7 +141,7 @@ int MSWinRTCap::activate()
 #if defined(MS2_WINDOWS_UNIVERSAL)
 	mCapture = ref new MediaCapture();
 	MediaCaptureInitializationSettings^ initSettings = ref new MediaCaptureInitializationSettings();
-	//initSettings->MediaCategory = MediaCategory::Communications;
+	initSettings->MediaCategory = MediaCategory::Communications;
 	initSettings->VideoDeviceId = mDeviceId;
 	initSettings->StreamingCaptureMode = StreamingCaptureMode::Video;
 	IAsyncAction^ initAction = mCapture->InitializeAsync(initSettings);
@@ -660,6 +660,8 @@ bool MSWinRTCap::selectBestVideoSize()
 void MSWinRTCap::configure()
 {
 #if defined(MS2_WINDOWS_UNIVERSAL)
+	mEncodingProfile = MediaEncodingProfile::CreateMp4(VideoEncodingQuality::Auto);
+#if 0
 	mEncodingProfile = ref new MediaEncodingProfile();
 	if (mPixFmt == MS_H264) {
 		mEncodingProfile->Video = VideoEncodingProperties::CreateH264();
@@ -669,6 +671,7 @@ void MSWinRTCap::configure()
 	} else {
 		mEncodingProfile->Video = VideoEncodingProperties::CreateUncompressed(MediaEncodingSubtypes::Nv12, mVConf.vsize.width, mVConf.vsize.height);
 	}
+#endif
 #elif defined(MS2_WINDOWS_PHONE)
 	bool unMuteAudio = true;
 	bool supportH264BaselineProfile = false;

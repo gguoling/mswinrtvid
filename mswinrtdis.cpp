@@ -23,10 +23,14 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "mswinrtdis.h"
 #include "VideoBuffer.h"
+#include <nserror.h>
+#include <Mferror.h>
 
+using namespace libmswinrtvid;
 using namespace Microsoft::WRL;
-//using namespace Mediastreamer2::WinRTVideo;
-
+using namespace Windows::Foundation;
+using namespace Windows::Media::Core;
+using namespace Windows::Media::MediaProperties;
 
 
 static uint8_t get_u8_at_bit_offset(uint8_t *data, uint32_t *bit_offset) {
@@ -61,22 +65,154 @@ static uint8_t get_ue_at_bit_offset(uint8_t *data, uint32_t *bit_offset) {
 
 
 
+static void _startMediaElement(Windows::UI::Xaml::Controls::MediaElement^ mediaElement, Windows::Media::Core::MediaStreamSource^ mediaStreamSource)
+{
+	ms_message("[MSWinRTDis] Play MediaElement");
+	mediaElement->RealTimePlayback = true;
+	mediaElement->SetMediaStreamSource(mediaStreamSource);
+	mediaElement->Play();
+}
+
+static void _stopMediaElement(Windows::UI::Xaml::Controls::MediaElement^ mediaElement, MSWinRTDisSampleHandler^ sampleHandler)
+{
+	ms_message("[MSWinRTDis] Stop MediaElement");
+	mediaElement->Stop();
+}
+
+
 bool MSWinRTDis::smInstantiated = false;
 
 
+MSWinRTDisSampleHandler::MSWinRTDisSampleHandler() : mPixFmt(MS_YUV420P), mWidth(MS_VIDEO_SIZE_CIF_W), mHeight(MS_VIDEO_SIZE_CIF_H)
+{
+	mSampleQueue = ref new Platform::Collections::Vector<MSWinRTDisSample^>();
+}
+
+MSWinRTDisSampleHandler::~MSWinRTDisSampleHandler()
+{
+}
+
+void MSWinRTDisSampleHandler::StartMediaElement()
+{
+	if (mMediaElement != nullptr) {
+		VideoEncodingProperties^ videoEncodingProperties;
+		if (this->PixFmt == MS_H264) {
+			videoEncodingProperties = VideoEncodingProperties::CreateH264();
+			videoEncodingProperties->Width = this->Width;
+			videoEncodingProperties->Height = this->Height;
+		}
+		else
+			videoEncodingProperties = VideoEncodingProperties::CreateUncompressed(MediaEncodingSubtypes::Nv12, this->Width, this->Height);
+		VideoStreamDescriptor^ videoStreamDescriptor = ref new VideoStreamDescriptor(videoEncodingProperties);
+		MediaStreamSource^ mediaStreamSource = ref new MediaStreamSource(videoStreamDescriptor);
+		mediaStreamSource->SampleRequested += ref new Windows::Foundation::TypedEventHandler<Windows::Media::Core::MediaStreamSource ^, Windows::Media::Core::MediaStreamSourceSampleRequestedEventArgs ^>(this, &MSWinRTDisSampleHandler::OnSampleRequested);
+		Windows::UI::Xaml::Controls::MediaElement^ mediaElement = mMediaElement;
+		bool inUIThread = mediaElement->Dispatcher->HasThreadAccess;
+		if (mediaElement->Dispatcher->HasThreadAccess) {
+			// We are in the UI thread
+			_startMediaElement(mediaElement, mediaStreamSource);
+		}
+		else {
+			// Ask the dispatcher to run this code in the UI thread
+			mediaElement->Dispatcher->RunAsync(Windows::UI::Core::CoreDispatcherPriority::Normal, ref new Windows::UI::Core::DispatchedHandler([mediaElement, mediaStreamSource]() {
+				_startMediaElement(mediaElement, mediaStreamSource);
+			}));
+		}
+	}
+}
+
+void MSWinRTDisSampleHandler::StopMediaElement()
+{
+	if (mMediaElement != nullptr) {
+		Windows::UI::Xaml::Controls::MediaElement^ mediaElement = mMediaElement;
+		if (mediaElement->Dispatcher->HasThreadAccess) {
+			// We are in the UI thread
+			_stopMediaElement(mediaElement, this);
+		}
+		else {
+			// Ask the dispatcher to run this code in the UI thread
+			mediaElement->Dispatcher->RunAsync(Windows::UI::Core::CoreDispatcherPriority::Normal, ref new Windows::UI::Core::DispatchedHandler([mediaElement, this]() {
+				_stopMediaElement(mediaElement, this);
+			}));
+		}
+	}
+}
+
+void MSWinRTDisSampleHandler::Feed(Windows::Storage::Streams::IBuffer^ pBuffer, UINT64 hnsPresentationTime)
+{
+	MSWinRTDisSample^ sample = ref new MSWinRTDisSample(pBuffer, hnsPresentationTime);
+	mMutex.lock();
+	mSampleQueue->Append(sample);
+
+	if ((mSampleRequestDeferral != nullptr) && (mSampleRequest != nullptr)) {
+		AnswerSampleRequest(mSampleRequest);
+		mSampleRequestDeferral->Complete();
+		mSampleRequest = nullptr;
+		mSampleRequestDeferral = nullptr;
+		ms_message("OnSampleReceived fill sample [queue: %d]", mSampleQueue->Size);
+	} else {
+		ms_message("OnSampleReceived queue sample [queue: %d]", mSampleQueue->Size);
+	}
+	mMutex.unlock();
+}
+
+void MSWinRTDisSampleHandler::OnSampleRequested(Windows::Media::Core::MediaStreamSource^ sender, Windows::Media::Core::MediaStreamSourceSampleRequestedEventArgs^ args)
+{
+	MediaStreamSourceSampleRequest^ request = args->Request;
+	VideoStreamDescriptor^ videoStreamDescriptor = dynamic_cast<VideoStreamDescriptor^>(request->StreamDescriptor);
+	if (videoStreamDescriptor == nullptr) {
+		ms_warning("OnSampleRequested not for a video stream!");
+		return;
+	}
+	mMutex.lock();
+	if (mSampleQueue->Size > 0) {
+		AnswerSampleRequest(request);
+		ms_message("OnSampleRequested fill sample [queue: %d]", mSampleQueue->Size);
+	} else {
+		ms_message("OnSampleRequested wait for sample [queue: %d]", mSampleQueue->Size);
+		mSampleRequestDeferral = request->GetDeferral();
+		mSampleRequest = request;
+	}
+	mMutex.unlock();
+}
+
+void MSWinRTDisSampleHandler::AnswerSampleRequest(Windows::Media::Core::MediaStreamSourceSampleRequest^ sampleRequest)
+{
+	MSWinRTDisSample^ sample = mSampleQueue->GetAt(0);
+	mSampleQueue->RemoveAt(0);
+	if (sample->Buffer != nullptr) {
+		TimeSpan ts;
+		ts.Duration = 0; //sample->PresentationTime;
+		MediaStreamSample^ streamSample = MediaStreamSample::CreateFromBuffer(sample->Buffer, ts);
+		sampleRequest->Sample = streamSample;
+	} else {
+		// This is a request to restart the media element
+		StopMediaElement();
+		StartMediaElement();
+	}
+}
+
+void MSWinRTDisSampleHandler::RequestMediaElementRestart()
+{
+	MSWinRTDisSample^ sample = ref new MSWinRTDisSample(nullptr, 0);
+	mMutex.lock();
+	mSampleQueue->Append(sample);
+	mMutex.unlock();
+}
+
+
+
 MSWinRTDis::MSWinRTDis()
-	: mIsInitialized(false), mIsActivated(false), mIsStarted(false), mWidth(MS_VIDEO_SIZE_CIF_W), mHeight(MS_VIDEO_SIZE_CIF_H),
-	mRfc3984Unpacker(nullptr), mBitstreamSize(65536), mBitstream(nullptr), mSPS(nullptr), mPPS(nullptr),
-#ifdef MS2_WINDOWS_PHONE
-	mRenderer(nullptr),
-#endif
-	mFirstFrameReceived(false)
+	: mIsInitialized(false), mIsActivated(false), mIsStarted(false), mRfc3984Unpacker(nullptr),
+	mBitstreamSize(65536), mBitstream(nullptr), mSPS(nullptr), mPPS(nullptr), mAVPFEnabled(false),
+	mSampleHandler(nullptr), mFirstFrameReceived(false)
 {
 	if (smInstantiated) {
 		ms_error("[MSWinRTDis] A video display filter is already instantiated. A second one can not be created.");
 		return;
 	}
 
+	mSampleHandler = ref new MSWinRTDisSampleHandler();
 	mIsInitialized = true;
 	smInstantiated = true;
 }
@@ -91,7 +227,7 @@ int MSWinRTDis::activate()
 {
 	if (!mIsInitialized) return -1;
 
-	if (mPixFmt == MS_H264) mRfc3984Unpacker = rfc3984_new();
+	if (mSampleHandler->PixFmt == MS_H264) mRfc3984Unpacker = rfc3984_new();
 	mIsActivated = true;
 	return 0;
 }
@@ -122,17 +258,8 @@ void MSWinRTDis::start()
 {
 	if (!mIsStarted && mIsActivated) {
 		mIsStarted = true;
-		Platform::String^ format;
-		if (mPixFmt == MS_H264)
-			format = ref new Platform::String(L"H264");
-		else
-			format = ref new Platform::String(L"YV12");
-#ifdef MS2_WINDOWS_PHONE
-		if (mRenderer != nullptr) {
-			ms_message("[MSWinRTDis] Start renderer %s - %dx%d", ms_pix_fmt_to_string(mPixFmt), mWidth, mHeight);
-			mRenderer->Start(format, mWidth, mHeight);
-		}
-#endif
+		//startMediaElement();
+		mSampleHandler->StartMediaElement();
 	}
 }
 
@@ -141,37 +268,76 @@ void MSWinRTDis::stop()
 	if (mIsStarted) {
 		mIsStarted = false;
 		mFirstFrameReceived = false;
-#ifdef MS2_WINDOWS_PHONE
-		if (mRenderer != nullptr) {
-			ms_message("[MSWinRTDis] Stop renderer");
-			mRenderer->Stop();
-		}
-#endif
+		//stopMediaElement();
+		mSampleHandler->StopMediaElement();
 	}
 }
 
+#if 0
+void MSWinRTDis::startMediaElement()
+{
+	if (mMediaElement != nullptr) {
+		VideoEncodingProperties^ videoEncodingProperties;
+		if (mPixFmt == MS_H264) {
+			videoEncodingProperties = VideoEncodingProperties::CreateH264();
+			videoEncodingProperties->Width = mWidth;
+			videoEncodingProperties->Height = mHeight;
+		}
+		else
+			videoEncodingProperties = VideoEncodingProperties::CreateUncompressed(MediaEncodingSubtypes::Nv12, mWidth, mHeight);
+		VideoStreamDescriptor^ videoStreamDescriptor = ref new VideoStreamDescriptor(videoEncodingProperties);
+		MediaStreamSource^ mediaStreamSource = mMediaStreamSource = ref new MediaStreamSource(videoStreamDescriptor);
+		mMediaStreamSource->SampleRequested += ref new Windows::Foundation::TypedEventHandler<Windows::Media::Core::MediaStreamSource ^, Windows::Media::Core::MediaStreamSourceSampleRequestedEventArgs ^>(mSampleHandler, &MSWinRTDisSampleHandler::OnSampleRequested);
+		Windows::UI::Xaml::Controls::MediaElement^ mediaElement = mMediaElement;
+		bool inUIThread = mMediaElement->Dispatcher->HasThreadAccess;
+		if (mMediaElement->Dispatcher->HasThreadAccess) {
+			// We are in the UI thread
+			_startMediaElement(mediaElement, mediaStreamSource);
+		} else {
+			// Ask the dispatcher to run this code in the UI thread
+			mMediaElement->Dispatcher->RunAsync(Windows::UI::Core::CoreDispatcherPriority::Normal, ref new Windows::UI::Core::DispatchedHandler([mediaElement, mediaStreamSource]() {
+				_startMediaElement(mediaElement, mediaStreamSource);
+			}));
+		}
+	}
+}
+
+void MSWinRTDis::stopMediaElement()
+{
+	if (mMediaElement != nullptr) {
+		Windows::UI::Xaml::Controls::MediaElement^ mediaElement = mMediaElement;
+		MSWinRTDisSampleHandler^ sampleHandler = mSampleHandler;
+		if (mMediaElement->Dispatcher->HasThreadAccess) {
+			// We are in the UI thread
+			_stopMediaElement(mediaElement, sampleHandler);
+		} else {
+			// Ask the dispatcher to run this code in the UI thread
+			mMediaElement->Dispatcher->RunAsync(Windows::UI::Core::CoreDispatcherPriority::Normal, ref new Windows::UI::Core::DispatchedHandler([mediaElement, sampleHandler]() {
+				_stopMediaElement(mediaElement, sampleHandler);
+			}));
+		}
+	}
+}
+#endif
+
 int MSWinRTDis::feed(MSFilter *f)
 {
-	mblk_t *im;
-
 	if (mIsStarted) {
+		mblk_t *im;
+		bool_t requestPLI = false;
+
 		while ((im = ms_queue_get(f->inputs[0])) != NULL) {
 			int size = 0;
-			if (mPixFmt == MS_H264) {
+			if (mSampleHandler->PixFmt == MS_H264) {
 				MSQueue nalus;
 				ms_queue_init(&nalus);
-				rfc3984_unpack(mRfc3984Unpacker, im, &nalus);
+				requestPLI |= (rfc3984_unpack(mRfc3984Unpacker, im, &nalus) < 0);
 				if (!ms_queue_empty(&nalus)) {
 					bool need_reinit = false;
 					size = nalusToFrame(&nalus, &need_reinit);
 					if (need_reinit) {
-#ifdef MS2_WINDOWS_PHONE
-						if (mRenderer != nullptr) {
-							Platform::String^ format = ref new Platform::String(L"H264");
-							ms_message("[MSWinRTDis] Change renderer format: %s - %dx%d", "H264", mWidth, mHeight);
-							mRenderer->ChangeFormat(format, mWidth, mHeight);
-						}
-#endif
+						mSampleHandler->RequestMediaElementRestart();
+						mFirstFrameReceived = true;
 					}
 				}
 			}
@@ -201,19 +367,17 @@ int MSWinRTDis::feed(MSFilter *f)
 				}
 #endif
 			}
-#ifdef MS2_WINDOWS_PHONE
-			if ((size > 0) && (mRenderer != nullptr)) {
-				if (!mFirstFrameReceived) {
-					mFirstFrameReceived = true;
-					mRenderer->FirstFrameReceived();
-				}
-				if (mRenderer->Dispatcher != nullptr) {
-					ComPtr<VideoBuffer> spVideoBuffer = NULL;
-					MakeAndInitialize<VideoBuffer>(&spVideoBuffer, mBitstream, size);
-					mRenderer->Dispatcher->OnSampleReceived(VideoBuffer::GetIBuffer(spVideoBuffer), f->ticker->time * 10000LL);
-				}
+			if (mFirstFrameReceived && (size > 0)) {
+				ComPtr<VideoBuffer> spVideoBuffer = NULL;
+				MakeAndInitialize<VideoBuffer>(&spVideoBuffer, mBitstream, size);
+				mSampleHandler->Feed(VideoBuffer::GetIBuffer(spVideoBuffer), f->ticker->time * 10000LL);
 			}
-#endif
+		}
+
+		if (requestPLI) {
+			ms_warning("[MSWinRTDis] Requesting PLI");
+			if (mAVPFEnabled) ms_filter_notify_no_arg(f, MS_VIDEO_DECODER_SEND_PLI);
+			else ms_filter_notify_no_arg(f, MS_VIDEO_DECODER_DECODING_ERRORS);
 		}
 	} else {
 		if (f->inputs[0] != NULL) {
@@ -231,28 +395,16 @@ int MSWinRTDis::feed(MSFilter *f)
 MSVideoSize MSWinRTDis::getVideoSize()
 {
 	MSVideoSize vs;
-	vs.width = mWidth;
-	vs.height = mHeight;
+	vs.width = mSampleHandler->Width;
+	vs.height = mSampleHandler->Height;
 	return vs;
 }
 
 void MSWinRTDis::setVideoSize(MSVideoSize vs)
 {
-	mWidth = vs.width;
-	mHeight = vs.height;
+	mSampleHandler->Width = vs.width;
+	mSampleHandler->Height = vs.height;
 }
-
-#ifdef MS2_WINDOWS_PHONE
-Mediastreamer2::WinRTVideo::IVideoRenderer^ MSWinRTDis::getVideoRenderer()
-{
-	return mRenderer;
-}
-
-void MSWinRTDis::setVideoRenderer(IVideoRenderer^ renderer)
-{
-	mRenderer = renderer;
-}
-#endif
 
 int MSWinRTDis::nalusToFrame(MSQueue *nalus, bool *new_sps_pps)
 {
@@ -421,8 +573,8 @@ void MSWinRTDis::updateVideoSizeFromSPS()
 	dummy = get_u1_at_bit_offset(data, &bit_offset); // gaps_in_frame_num_value_allowed_flag
 	pic_width_in_mbs_minus1 = get_ue_at_bit_offset(data, &bit_offset);
 	pic_height_in_map_units_minus1 = get_ue_at_bit_offset(data, &bit_offset);
- 	mWidth = (pic_width_in_mbs_minus1 + 1) * 16;
- 	mHeight = (pic_height_in_map_units_minus1 + 1) * 16;
-	ms_message("[MSWinRTDis] Change video size from SPS: %ux%u", mWidth, mHeight);
+ 	mSampleHandler->Width = (pic_width_in_mbs_minus1 + 1) * 16;
+ 	mSampleHandler->Height = (pic_height_in_map_units_minus1 + 1) * 16;
+	ms_message("[MSWinRTDis] Change video size from SPS: %ux%u", mSampleHandler->Width, mSampleHandler->Height);
 	MS_UNUSED(dummy);
 }
