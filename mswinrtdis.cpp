@@ -83,7 +83,8 @@ static void _stopMediaElement(Windows::UI::Xaml::Controls::MediaElement^ mediaEl
 bool MSWinRTDis::smInstantiated = false;
 
 
-MSWinRTDisSampleHandler::MSWinRTDisSampleHandler() : mPixFmt(MS_YUV420P), mWidth(MS_VIDEO_SIZE_CIF_W), mHeight(MS_VIDEO_SIZE_CIF_H)
+MSWinRTDisSampleHandler::MSWinRTDisSampleHandler() :
+	mLastPresentationTime(0), mLastFilterTime(0), mPixFmt(MS_YUV420P), mWidth(MS_VIDEO_SIZE_CIF_W), mHeight(MS_VIDEO_SIZE_CIF_H)
 {
 	mSampleQueue = ref new Platform::Collections::Vector<MSWinRTDisSample^>();
 }
@@ -138,9 +139,9 @@ void MSWinRTDisSampleHandler::StopMediaElement()
 	}
 }
 
-void MSWinRTDisSampleHandler::Feed(Windows::Storage::Streams::IBuffer^ pBuffer, UINT64 hnsPresentationTime)
+void MSWinRTDisSampleHandler::Feed(Windows::Storage::Streams::IBuffer^ pBuffer, UINT64 filterTime)
 {
-	MSWinRTDisSample^ sample = ref new MSWinRTDisSample(pBuffer, hnsPresentationTime);
+	MSWinRTDisSample^ sample = ref new MSWinRTDisSample(pBuffer, filterTime);
 	mMutex.lock();
 	mSampleQueue->Append(sample);
 
@@ -149,9 +150,11 @@ void MSWinRTDisSampleHandler::Feed(Windows::Storage::Streams::IBuffer^ pBuffer, 
 		mSampleRequestDeferral->Complete();
 		mSampleRequest = nullptr;
 		mSampleRequestDeferral = nullptr;
-		ms_message("OnSampleReceived fill sample [queue: %d]", mSampleQueue->Size);
+#ifdef _DEBUG
+		ms_message("OnSampleReceived fill sample [queue: %d, lastFilterTime=%llu, lastPresentationTime=%llu]", mSampleQueue->Size, mLastFilterTime, mLastPresentationTime);
 	} else {
 		ms_message("OnSampleReceived queue sample [queue: %d]", mSampleQueue->Size);
+#endif
 	}
 	mMutex.unlock();
 }
@@ -167,9 +170,13 @@ void MSWinRTDisSampleHandler::OnSampleRequested(Windows::Media::Core::MediaStrea
 	mMutex.lock();
 	if (mSampleQueue->Size > 0) {
 		AnswerSampleRequest(request);
-		ms_message("OnSampleRequested fill sample [queue: %d]", mSampleQueue->Size);
+#ifdef _DEBUG
+		ms_message("OnSampleRequested fill sample [queue: %d, lastFilterTime=%llu, lastPresentationTime=%llu]", mSampleQueue->Size, mLastFilterTime, mLastPresentationTime);
+#endif
 	} else {
+#ifdef _DEBUG
 		ms_message("OnSampleRequested wait for sample [queue: %d]", mSampleQueue->Size);
+#endif
 		mSampleRequestDeferral = request->GetDeferral();
 		mSampleRequest = request;
 	}
@@ -182,12 +189,19 @@ void MSWinRTDisSampleHandler::AnswerSampleRequest(Windows::Media::Core::MediaStr
 	mSampleQueue->RemoveAt(0);
 	if (sample->Buffer != nullptr) {
 		TimeSpan ts;
-		ts.Duration = 0; //sample->PresentationTime;
+		if ((mLastFilterTime == 0) || (mSampleQueue->Size > 0)) {
+			ts.Duration = mLastPresentationTime;
+		} else {
+			ts.Duration = mLastPresentationTime + ((sample->FilterTime - mLastFilterTime) * 10000LL);
+		}
 		MediaStreamSample^ streamSample = MediaStreamSample::CreateFromBuffer(sample->Buffer, ts);
 		sampleRequest->Sample = streamSample;
+		mLastFilterTime = sample->FilterTime;
+		mLastPresentationTime = ts.Duration;
 	} else {
 		// This is a request to restart the media element
 		StopMediaElement();
+		mLastPresentationTime = mLastFilterTime = 0;
 		StartMediaElement();
 	}
 }
@@ -370,7 +384,7 @@ int MSWinRTDis::feed(MSFilter *f)
 			if (mFirstFrameReceived && (size > 0)) {
 				ComPtr<VideoBuffer> spVideoBuffer = NULL;
 				MakeAndInitialize<VideoBuffer>(&spVideoBuffer, mBitstream, size);
-				mSampleHandler->Feed(VideoBuffer::GetIBuffer(spVideoBuffer), f->ticker->time * 10000LL);
+				mSampleHandler->Feed(VideoBuffer::GetIBuffer(spVideoBuffer), f->ticker->time);
 			}
 		}
 

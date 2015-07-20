@@ -42,10 +42,10 @@ namespace libmswinrtvid
 	private ref class MSWinRTDisSample sealed
 	{
 	public:
-		MSWinRTDisSample(Windows::Storage::Streams::IBuffer^ pBuffer, UINT64 hnsPresentationTime)
+		MSWinRTDisSample(Windows::Storage::Streams::IBuffer^ pBuffer, UINT64 filterTime)
 		{
 			this->Buffer = pBuffer;
-			this->PresentationTime = hnsPresentationTime;
+			this->FilterTime = filterTime;
 		}
 
 		property Windows::Storage::Streams::IBuffer^ Buffer
@@ -54,17 +54,17 @@ namespace libmswinrtvid
 			void set(Windows::Storage::Streams::IBuffer^ value) { mBuffer = value; };
 		}
 
-		property UINT64 PresentationTime
+		property UINT64 FilterTime
 		{
-			UINT64 get() { return mPresentationTime; };
-			void set(UINT64 value) { mPresentationTime = value; };
+			UINT64 get() { return mFilterTime; };
+			void set(UINT64 value) { mFilterTime = value; };
 		}
 
 	private:
 		~MSWinRTDisSample() {};
 
 		Windows::Storage::Streams::IBuffer^ mBuffer;
-		UINT64 mPresentationTime;
+		UINT64 mFilterTime;
 	};
 
 	private ref class MSWinRTDisSampleHandler sealed
@@ -74,7 +74,7 @@ namespace libmswinrtvid
 		virtual ~MSWinRTDisSampleHandler();
 		void StartMediaElement();
 		void StopMediaElement();
-		void Feed(Windows::Storage::Streams::IBuffer^ pBuffer, UINT64 hnsPresentationTime);
+		void Feed(Windows::Storage::Streams::IBuffer^ pBuffer, UINT64 filterTime);
 		void OnSampleRequested(Windows::Media::Core::MediaStreamSource ^sender, Windows::Media::Core::MediaStreamSourceSampleRequestedEventArgs ^args);
 		void RequestMediaElementRestart();
 
@@ -109,6 +109,8 @@ namespace libmswinrtvid
 		Windows::Media::Core::MediaStreamSourceSampleRequest^ mSampleRequest;
 		Windows::Media::Core::MediaStreamSourceSampleRequestDeferral^ mSampleRequestDeferral;
 		Windows::UI::Xaml::Controls::MediaElement^ mMediaElement;
+		UINT64 mLastPresentationTime;
+		UINT64 mLastFilterTime;
 		std::mutex mMutex;
 		MSPixFmt mPixFmt;
 		int mWidth;
