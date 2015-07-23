@@ -53,53 +53,41 @@ namespace libmswinrtvid
 		void stop();
 		int feed(MSFilter *f);
 
-		void OnSampleAvailable(ULONGLONG hnsPresentationTime, ULONGLONG hnsSampleDuration, DWORD cbSample, BYTE* pSample);
+		//void OnSampleAvailable(ULONGLONG hnsPresentationTime, ULONGLONG hnsSampleDuration, DWORD cbSample, BYTE* pSample);
 
 		void setCaptureElement(Windows::UI::Xaml::Controls::CaptureElement^ captureElement) { mCaptureElement = captureElement; };
 		void setDeviceId(Platform::String^ id) { mDeviceId = id; };
-		MSPixFmt getPixFmt() { return mPixFmt; }
-		void setPixFmt(MSPixFmt pixFmt) { mPixFmt = pixFmt; }
-		float getFps() { return mVConf.fps; }
+		MSPixFmt getPixFmt() { return MS_YUV420P; }
+		float getFps() { return mFps; }
 		void setFps(float fps);
-		int getBitrate() { return mBitrate; }
-		void setBitrate(int bitrate);
 		MSVideoSize getVideoSize();
 		void setVideoSize(MSVideoSize vs);
-		const MSVideoConfiguration * getConfigurationList();
-		void setConfiguration(const MSVideoConfiguration *vconf);
 		int getCameraSensorRotation() { return mCameraSensorRotation; }
 		void setDeviceOrientation(int degrees);
-		void requestIdrFrame();
 
 		static void detectCameras(MSWebCamManager *manager, MSWebCamDesc *desc);
 
 	private:
 		void applyFps();
 		void applyVideoSize();
-		void bitstreamToMsgb(uint8_t *encoded_buf, size_t size, MSQueue *nalus);
 		bool selectBestVideoSize();
 		void configure();
-		void printProperties();
 		static void addCamera(MSWebCamManager *manager, MSWebCamDesc *desc, Platform::String^ DeviceId, Platform::String^ DeviceName);
 
 		static bool smInstantiated;
 		bool mIsInitialized;
 		bool mIsActivated;
 		bool mIsStarted;
+		float mFps;
+		MSVideoSize mVideoSize;
 		MSQueue mSampleToSendQueue;
 		MSQueue mSampleToFreeQueue;
 		ms_mutex_t mMutex;
-		Rfc3984Context *mRfc3984Packer;
 		MSYuvBufAllocator *mAllocator;
-		int mPackerMode;
 		uint64_t mStartTime;
-		int mSamplesCount;
-		int mBitrate;
 		int mCameraSensorRotation;
 		int mDeviceOrientation;
 		MSVideoStarter mStarter;
-		MSVideoConfiguration mVConf;
-		MSPixFmt mPixFmt;
 		HANDLE mActivationCompleted;
 		HANDLE mStartCompleted;
 		HANDLE mStopCompleted;

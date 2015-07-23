@@ -131,35 +131,15 @@ namespace libmswinrtvid
 		int feed(MSFilter *f);
 		MSVideoSize getVideoSize();
 		void setVideoSize(MSVideoSize vs);
-		void setPixFmt(MSPixFmt pix_fmt) { mSampleHandler->PixFmt = pix_fmt; }
-		void enableAVPF(bool enable) { mAVPFEnabled = enable; }
 		void setMediaElement(Windows::UI::Xaml::Controls::MediaElement^ mediaElement) { mSampleHandler->MediaElement = mediaElement; }
 
 	private:
-		int nalusToFrame(MSQueue *nalus, bool *new_sps_pps);
-		void enlargeBitstream(int newSize);
-		bool checkSPSChange(mblk_t *sps);
-		bool checkPPSChange(mblk_t *pps);
-		void updateSPS(mblk_t *sps);
-		void updatePPS(mblk_t *pps);
-		void updateVideoSizeFromSPS();
-#if 0
-		void startMediaElement();
-		void stopMediaElement();
-#endif
-
 		static bool smInstantiated;
 		bool mIsInitialized;
 		bool mIsActivated;
 		bool mIsStarted;
-		Rfc3984Context *mRfc3984Unpacker;
-		int mBitstreamSize;
-		uint8_t *mBitstream;
-		mblk_t *mSPS;
-		mblk_t *mPPS;
-		bool mAVPFEnabled;
+		uint8_t *mBuffer;
 		MSWinRTDisSampleHandler^ mSampleHandler;
 		Windows::Media::Core::MediaStreamSource^ mMediaStreamSource;
-		bool mFirstFrameReceived;
 	};
 }

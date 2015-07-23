@@ -79,7 +79,6 @@ MSWinRTStreamSink::MSWinRTStreamSink(DWORD dwIdentifier)
 	, _dwIdentifier(dwIdentifier)
 	, _state(State_TypeNotSet)
 	, _IsShutdown(false)
-	, _Connected(false)
 	, _fGetStartTimeFromSample(false)
 	, _fWaitingForFirstSample(false)
 	, _fFirstSampleAfterConnect(false)
@@ -88,7 +87,7 @@ MSWinRTStreamSink::MSWinRTStreamSink(DWORD dwIdentifier)
 	, _pParent(nullptr)
 #pragma warning(push)
 #pragma warning(disable:4355)
-	//, _WorkQueueCB(this, &MSWinRTStreamSink::OnDispatchWorkItem)
+	, _WorkQueueCB(this, &MSWinRTStreamSink::OnDispatchWorkItem)
 #pragma warning(pop)
 {
 	ZeroMemory(&_guiCurrentSubtype, sizeof(_guiCurrentSubtype));
@@ -99,6 +98,45 @@ MSWinRTStreamSink::~MSWinRTStreamSink()
 {
 	ms_message("MSWinRTStreamSink destructor");
 }
+
+
+MSWinRTStreamSink::MSWinRTAsyncOperation::MSWinRTAsyncOperation(StreamOperation op)
+	: _cRef(1), m_op(op)
+{
+}
+
+MSWinRTStreamSink::MSWinRTAsyncOperation::~MSWinRTAsyncOperation()
+{
+}
+
+ULONG MSWinRTStreamSink::MSWinRTAsyncOperation::AddRef()
+{
+	return InterlockedIncrement(&_cRef);
+}
+
+ULONG MSWinRTStreamSink::MSWinRTAsyncOperation::Release()
+{
+	ULONG cRef = InterlockedDecrement(&_cRef);
+	if (cRef == 0) {
+		delete this;
+	}
+	return cRef;
+}
+
+HRESULT MSWinRTStreamSink::MSWinRTAsyncOperation::QueryInterface(REFIID iid, void **ppv)
+{
+	if (!ppv)
+		return E_POINTER;
+	if (iid == IID_IUnknown)
+		*ppv = static_cast<IUnknown*>(this);
+	else {
+		*ppv = nullptr;
+		return E_NOINTERFACE;
+	}
+	AddRef();
+	return S_OK;
+}
+
 
 
 // IUnknown methods
@@ -275,7 +313,7 @@ IFACEMETHODIMP MSWinRTStreamSink::ProcessSample(IMFSample *pSample)
 	if (SUCCEEDED(hr))
 		hr = ValidateOperation(OpProcessSample);
 
-	if (SUCCEEDED(hr) && _fWaitingForFirstSample && !_Connected) {
+	if (SUCCEEDED(hr) && _fWaitingForFirstSample) {
 		_spFirstVideoSample = pSample;
 		_fWaitingForFirstSample = false;
 		hr = QueueEvent(MEStreamSinkRequestSample, GUID_NULL, hr, nullptr);
@@ -346,9 +384,11 @@ IFACEMETHODIMP MSWinRTStreamSink::Flush()
 			throw ref new Exception(hr);
 		}
 
+#if 0 // TODO
 		// Note: Even though we are flushing data, we still need to send
 		// any marker events that were queued.
 		DropSamplesFromQueue();
+#endif
 	} catch (Exception ^exc) {
 		hr = exc->HResult;
 	}
@@ -377,13 +417,13 @@ IFACEMETHODIMP MSWinRTStreamSink::IsMediaTypeSupported(/* [in] */ IMFMediaType *
 	// First make sure it's video type.
 	if (SUCCEEDED(hr)) {
 		if (majorType != MFMediaType_Video)
-			hr = MF_E_INVALIDTYPE;
+			hr = MF_E_INVALIDMEDIATYPE;
 	}
 
 	if (SUCCEEDED(hr) && _spCurrentType != nullptr) {
 		GUID guiNewSubtype;
 		if (FAILED(pMediaType->GetGUID(MF_MT_SUBTYPE, &guiNewSubtype)) || guiNewSubtype != _guiCurrentSubtype)
-			hr = MF_E_INVALIDTYPE;
+			hr = MF_E_INVALIDMEDIATYPE;
 	}
 
 	// We don't return any "close match" types.
@@ -665,20 +705,17 @@ HRESULT MSWinRTStreamSink::Shutdown()
 	return S_OK;
 }
 
-
 // Puts an async operation on the work queue.
 HRESULT MSWinRTStreamSink::QueueAsyncOperation(StreamOperation op)
 {
 	ms_message("MSWinRTStreamSink::QueueAsyncOperation");
 	HRESULT hr = S_OK;
-#if 0 // TODO
-	ComPtr<CAsyncOperation> spOp;
-	spOp.Attach(new CAsyncOperation(op)); // Created with ref count = 1
+	ComPtr<MSWinRTAsyncOperation> spOp;
+	spOp.Attach(new MSWinRTAsyncOperation(op)); // Created with ref count = 1
 	if (!spOp)
 		hr = E_OUTOFMEMORY;
 	if (SUCCEEDED(hr))
 		hr = MFPutWorkItem2(_WorkQueueId, 0, &_WorkQueueCB, spOp.Get());
-#endif
 	RETURN_HR(hr)
 }
 
@@ -697,8 +734,9 @@ HRESULT MSWinRTStreamSink::OnDispatchWorkItem(IMFAsyncResult *pAsyncResult)
 		}
 
 		// The state object is a CAsncOperation object.
-		CAsyncOperation *pOp = static_cast<CAsyncOperation *>(spState.Get());
+		MSWinRTAsyncOperation *pOp = static_cast<MSWinRTAsyncOperation *>(spState.Get());
 		StreamOperation op = pOp->m_op;
+		bool fRequestMoreSamples = false;
 
 		switch (op) {
 		case OpStart:
@@ -711,13 +749,7 @@ HRESULT MSWinRTStreamSink::OnDispatchWorkItem(IMFAsyncResult *pAsyncResult)
 			}
 
 			// There might be samples queue from earlier (ie, while paused).
-			bool fRequestMoreSamples;
-			if (!_Connected) {
-				// Just drop samples if we are not connected
-				fRequestMoreSamples = DropSamplesFromQueue();
-			} else {
-				fRequestMoreSamples = SendSampleFromQueue();
-			}
+			fRequestMoreSamples = SendSampleFromQueue();
 			if (fRequestMoreSamples) {
 				// If false there is no samples in the queue now so request one
 				hr = QueueEvent(MEStreamSinkRequestSample, GUID_NULL, S_OK, nullptr);
@@ -763,14 +795,10 @@ HRESULT MSWinRTStreamSink::OnDispatchWorkItem(IMFAsyncResult *pAsyncResult)
 }
 
 // Complete a ProcessSample or PlaceMarker request.
-void MSWinRTStreamSink::DispatchProcessSample(CAsyncOperation *pOp)
+void MSWinRTStreamSink::DispatchProcessSample(MSWinRTAsyncOperation *pOp)
 {
 	ms_message("MSWinRTStreamSink::DispatchProcessSample");
-	bool fRequestMoreSamples = false;
-	if (!_Connected)
-		fRequestMoreSamples = DropSamplesFromQueue();
-	else
-		fRequestMoreSamples = SendSampleFromQueue();
+	bool fRequestMoreSamples = SendSampleFromQueue();
 
 	// Ask for another sample
 	if (fRequestMoreSamples) {
@@ -801,7 +829,6 @@ bool MSWinRTStreamSink::ProcessSamplesFromQueue(bool fFlush)
 {
 	ms_message("MSWinRTStreamSink::ProcessSamplesFromQueue");
 	bool fNeedMoreSamples = false;
-#if 0 // TODO
 	ComPtr<IUnknown> spunkSample;
 	bool fSendSamples = true;
 	bool fSendEOS = false;
@@ -813,7 +840,7 @@ bool MSWinRTStreamSink::ProcessSamplesFromQueue(bool fFlush)
 
 	while (fSendSamples) {
 		ComPtr<IMFSample> spSample;
-		ComPtr<IBufferPacket> spPacket;
+		//ComPtr<IBufferPacket> spPacket;
 		bool fProcessingSample = false;
 
 		// Figure out if this is a marker or a sample.
@@ -822,10 +849,15 @@ bool MSWinRTStreamSink::ProcessSamplesFromQueue(bool fFlush)
 		if (SUCCEEDED(spunkSample.As(&spSample))) {
 			if (!fFlush) {
 				// Prepare sample for sending
+				PrepareSample(spSample.Get());
+#if 0 // TODO
 				spPacket = PrepareSample(spSample.Get(), false);
+#endif
 				fProcessingSample = true;
 			}
-		} else {
+		}
+#if 0
+		else {
 			ComPtr<IMarker> spMarker;
 			// Check if it is a marker
 			if (SUCCEEDED(spunkSample.As(&spMarker))) {
@@ -850,7 +882,9 @@ bool MSWinRTStreamSink::ProcessSamplesFromQueue(bool fFlush)
 					spPacket = PrepareFormatChange(spType.Get());
 			}
 		}
+#endif
 
+#if 0 // TODO
 		if (spPacket) {
 			ComPtr<MSWinRTStreamSink> spThis = this;
 			// Send the sample
@@ -875,6 +909,7 @@ bool MSWinRTStreamSink::ProcessSamplesFromQueue(bool fFlush)
 			// We stop if we processed a sample otherwise keep looking
 			fSendSamples = !fProcessingSample;
 		}
+#endif
 
 		if (fSendSamples)
 		{
@@ -889,12 +924,11 @@ bool MSWinRTStreamSink::ProcessSamplesFromQueue(bool fFlush)
 
 	if (fSendEOS)
 	{
-		ComPtr<CMediaSink> spParent = _pParent;
+		ComPtr<MSWinRTMediaSink> spParent = _pParent;
 		concurrency::create_task([spParent]() {
 			spParent->ReportEndOfStream();
 		});
 	}
-#endif
 	return fNeedMoreSamples;
 }
 
@@ -912,6 +946,38 @@ void MSWinRTStreamSink::ProcessFormatChange(IMFMediaType *pMediaType)
 	hr = QueueAsyncOperation(OpSetMediaType);
 	if (FAILED(hr))
 		throw ref new Exception(hr);
+}
+
+HRESULT MSWinRTStreamSink::PrepareSample(IMFSample *pSample)
+{
+	ms_message("MSWinRTStreamSink::PrepareSample");
+	LONGLONG llSampleTime;
+	HRESULT hr = pSample->GetSampleTime(&llSampleTime);
+	if (FAILED(hr))
+		return hr;
+	if (llSampleTime < 0)
+		return hr;
+
+	DWORD cBuffers = 0;
+	hr = pSample->GetBufferCount(&cBuffers);
+	if (SUCCEEDED(hr)) {
+		for (DWORD nIndex = 0; nIndex < cBuffers; ++nIndex) {
+			ComPtr<IMFMediaBuffer> spMediaBuffer;
+			// Get buffer from the sample
+			hr = pSample->GetBufferByIndex(nIndex, &spMediaBuffer);
+			if (FAILED(hr)) break;
+			BYTE *pBuffer = nullptr;
+			DWORD currentLength = 0;
+			hr = spMediaBuffer->Lock(&pBuffer, NULL, &currentLength);
+			if (SUCCEEDED(hr)) {
+				// TODO
+				hr = spMediaBuffer->Unlock();
+				if (FAILED(hr)) break;
+			}
+		}
+	}
+
+	RETURN_HR(hr);
 }
 
 void MSWinRTStreamSink::HandleError(HRESULT hr)
@@ -942,21 +1008,15 @@ MSWinRTMediaSink::~MSWinRTMediaSink()
 	ms_message("MSWinRTMediaSink destructor");
 }
 
-HRESULT MSWinRTMediaSink::RuntimeClassInitialize(/*ISinkCallback ^callback,*/ Windows::Media::MediaProperties::IMediaEncodingProperties ^videoEncodingProperties)
+HRESULT MSWinRTMediaSink::RuntimeClassInitialize(Windows::Media::MediaProperties::IMediaEncodingProperties ^videoEncodingProperties)
 {
 	ms_message("MSWinRTMediaSink::RuntimeClassInitialize");
 	try
 	{
-#if 0 // TODO
-		_callback = callback;
-#endif
 		SetVideoStreamProperties(videoEncodingProperties);
 	}
 	catch (Exception ^exc)
 	{
-#if 0 // TODO
-		_callback = nullptr;
-#endif
 		return exc->HResult;
 	}
 
@@ -966,13 +1026,24 @@ HRESULT MSWinRTMediaSink::RuntimeClassInitialize(/*ISinkCallback ^callback,*/ Wi
 void MSWinRTMediaSink::SetVideoStreamProperties(_In_opt_ Windows::Media::MediaProperties::IMediaEncodingProperties ^mediaEncodingProperties)
 {
 	ms_message("MSWinRTMediaSink::SetVideoStreamProperties");
-	RemoveStreamSink(0);
 	if (mediaEncodingProperties != nullptr)
 	{
-		ComPtr<IMFStreamSink> spStreamSink;
 		ComPtr<IMFMediaType> spMediaType;
 		ConvertPropertiesToMediaType(mediaEncodingProperties, &spMediaType);
-		HRESULT hr = AddStreamSink(0, spMediaType.Get(), spStreamSink.GetAddressOf());
+
+		// Initialize the stream.
+		HRESULT hr = S_OK;
+		MSWinRTStreamSink *pStream = new MSWinRTStreamSink(0);
+		if (pStream == nullptr)
+			hr = E_OUTOFMEMORY;
+		if (SUCCEEDED(hr)) {
+			pStream->Initialize(this);
+			hr = pStream->SetCurrentMediaType(spMediaType.Get());
+		}
+		if (SUCCEEDED(hr)) {
+			_stream = pStream; // implicit AddRef
+		}
+
 		if (FAILED(hr))
 			throw ref new Exception(hr);
 	}
@@ -988,76 +1059,23 @@ IFACEMETHODIMP MSWinRTMediaSink::GetCharacteristics(DWORD *pdwCharacteristics)
 	_mutex.lock();
 	HRESULT hr = CheckShutdown();
 	if (SUCCEEDED(hr)) {
-		// Rateless sink.
-		*pdwCharacteristics = MEDIASINK_RATELESS;
+		// Rateless sink with fixed number of streams (1).
+		*pdwCharacteristics = MEDIASINK_RATELESS | MEDIASINK_FIXED_STREAMS;
 	}
 	_mutex.unlock();
 	RETURN_HR(hr)
 }
 
-IFACEMETHODIMP MSWinRTMediaSink::AddStreamSink(DWORD dwStreamSinkIdentifier, IMFMediaType *pMediaType, IMFStreamSink **ppStreamSink)
+IFACEMETHODIMP MSWinRTMediaSink::AddStreamSink(/* [in] */ DWORD dwStreamSinkIdentifier, /* [in] */ IMFMediaType *pMediaType, /* [out] */ IMFStreamSink **ppStreamSink)
 {
-	ms_message("MSWinRTMediaSink::AddStreamSink(dwStreamSinkIdentifier=%d)", dwStreamSinkIdentifier);
-	MSWinRTStreamSink *pStream = nullptr;
-	ComPtr<IMFStreamSink> spMFStream;
-
-	_mutex.lock();
-	HRESULT hr = CheckShutdown();
-	if (SUCCEEDED(hr)) {
-		hr = GetStreamSinkById(dwStreamSinkIdentifier, &spMFStream);
-	}
-	if (SUCCEEDED(hr))
-		hr = MF_E_STREAMSINK_EXISTS;
-	else
-		hr = S_OK;
-
-	if (SUCCEEDED(hr)) {
-		pStream = new MSWinRTStreamSink(dwStreamSinkIdentifier);
-		if (pStream == nullptr)
-			hr = E_OUTOFMEMORY;
-		spMFStream.Attach(pStream);
-	}
-
-	// Initialize the stream.
-	if (SUCCEEDED(hr))
-		hr = pStream->Initialize(this);
-	if (SUCCEEDED(hr) && pMediaType != nullptr)
-		hr = pStream->SetCurrentMediaType(pMediaType);
-	if (SUCCEEDED(hr))
-		hr = _streams.InsertFront(pStream);
-	if (SUCCEEDED(hr))
-		*ppStreamSink = spMFStream.Detach();
-
-	_mutex.unlock();
-	RETURN_HR(hr)
+	ms_message("MSWinRTMediaSink::AddStreamSink");
+	RETURN_HR(E_NOTIMPL);
 }
 
 IFACEMETHODIMP MSWinRTMediaSink::RemoveStreamSink(DWORD dwStreamSinkIdentifier)
 {
-	ms_message("MSWinRTMediaSink::RemoveStreamSink(dwStreamSinkIdentifier=%d)", dwStreamSinkIdentifier);
-	_mutex.lock();
-	HRESULT hr = CheckShutdown();
-	//StreamContainer::POSITION pos = _streams.FrontPosition();
-	//StreamContainer::POSITION endPos = _streams.EndPosition();
-	ComPtr<IMFStreamSink> spStream;
-
-	if (SUCCEEDED(hr)) {
-		hr = _streams.GetFront(&spStream);
-		if (SUCCEEDED(hr)) {
-			DWORD dwId;
-			hr = spStream->GetIdentifier(&dwId);
-		} else {
-			hr = MF_E_INVALIDSTREAMNUMBER;
-		}
-	}
-
-	if (SUCCEEDED(hr)) {
-		hr = _streams.RemoveFront(nullptr);
-		static_cast<MSWinRTStreamSink *>(spStream.Get())->Shutdown();
-	}
-
-	_mutex.unlock();
-	RETURN_HR(hr)
+	ms_message("MSWinRTMediaSink::RemoveStreamSink");
+	RETURN_HR(E_NOTIMPL);
 }
 
 IFACEMETHODIMP MSWinRTMediaSink::GetStreamSinkCount(_Out_ DWORD *pcStreamSinkCount)
@@ -1088,10 +1106,10 @@ IFACEMETHODIMP MSWinRTMediaSink::GetStreamSinkByIndex(DWORD dwIndex, _Outptr_ IM
 		return MF_E_INVALIDINDEX;
 
 	HRESULT hr = CheckShutdown();
-	if (SUCCEEDED(hr))
-		hr = _streams.GetFront(&spStream);
-	if (SUCCEEDED(hr))
-		*ppStreamSink = spStream.Detach();
+	if (SUCCEEDED(hr)) {
+		*ppStreamSink = _stream.Get();
+		(*ppStreamSink)->AddRef();
+	}
 
 	_mutex.unlock();
 	RETURN_HR(hr)
@@ -1108,22 +1126,19 @@ IFACEMETHODIMP MSWinRTMediaSink::GetStreamSinkById(DWORD dwStreamSinkIdentifier,
 	ComPtr<IMFStreamSink> spResult;
 	if (SUCCEEDED(hr)) {
 		DWORD dwId;
-		ComPtr<IMFStreamSink> spStream;
-		hr = _streams.GetFront(&spStream);
+		hr = _stream->GetIdentifier(&dwId);
 		if (SUCCEEDED(hr)) {
-			hr = spStream->GetIdentifier(&dwId);
-			if (SUCCEEDED(hr)) {
-				if (dwId == dwStreamSinkIdentifier)
-					spResult = spStream;
-				else
-					hr = MF_E_INVALIDSTREAMNUMBER;
-			}
+			if (dwId == dwStreamSinkIdentifier)
+				spResult = _stream;
+			else
+				hr = MF_E_INVALIDSTREAMNUMBER;
 		} else {
 			hr = MF_E_INVALIDSTREAMNUMBER;
 		}
-	}
-	if (SUCCEEDED(hr)) {
-		*ppStreamSink = spResult.Detach();
+		if (SUCCEEDED(hr)) {
+			*ppStreamSink = spResult.Get();
+			(*ppStreamSink)->AddRef();
+		}
 	}
 
 	_mutex.unlock();
@@ -1184,36 +1199,14 @@ IFACEMETHODIMP MSWinRTMediaSink::GetPresentationClock(IMFPresentationClock **ppP
 IFACEMETHODIMP MSWinRTMediaSink::Shutdown()
 {
 	ms_message("MSWinRTMediaSink::Shutdown");
-#if 0 // TODO
-	ISinkCallback ^callback;
-#endif
 	_mutex.lock();
 	HRESULT hr = CheckShutdown();
 	if (SUCCEEDED(hr)) {
-#if 0 // TODO
-		ForEach(_streams, ShutdownFunc());
-		_streams.Clear();
-
-		if (_networkSender != nullptr)
-		{
-			_networkSender->Close();
-		}
-
-		_networkSender = nullptr;
-#endif
+		static_cast<MSWinRTStreamSink *>(_stream.Get())->Shutdown();
 		_spClock.Reset();
 		_IsShutdown = true;
-#if 0 // TODO
-		callback = _callback;
-#endif
 	}
 	_mutex.unlock();
-
-#if 0 // TODO
-	if (callback != nullptr)
-		callback->OnShutdown();
-#endif
-
 	return S_OK;
 }
 
@@ -1224,12 +1217,9 @@ IFACEMETHODIMP MSWinRTMediaSink::OnClockStart(MFTIME hnsSystemTime, LONGLONG llC
 	_mutex.lock();
 	HRESULT hr = CheckShutdown();
 	if (SUCCEEDED(hr)) {
-#if 0 // TODO
-		TRACE(TRACE_LEVEL_LOW, L"OnClockStart ts=%I64d\n", llClockStartOffset);
-		// Start each stream.
+		ms_message("MSWinRTMediaSink::OnClockStart ts=%I64d\n", llClockStartOffset);
 		_llStartTime = llClockStartOffset;
-		hr = ForEach(_streams, StartFunc(llClockStartOffset));
-#endif
+		hr = static_cast<MSWinRTStreamSink *>(_stream.Get())->Start(llClockStartOffset);
 	}
 
 	_mutex.unlock();
@@ -1242,10 +1232,7 @@ IFACEMETHODIMP MSWinRTMediaSink::OnClockStop(MFTIME hnsSystemTime)
 	_mutex.lock();
 	HRESULT hr = CheckShutdown();
 	if (SUCCEEDED(hr)) {
-		// Stop each stream
-#if 0 // TODO
-		hr = ForEach(_streams, StopFunc());
-#endif
+		hr = static_cast<MSWinRTStreamSink *>(_stream.Get())->Stop();
 	}
 
 	_mutex.unlock();
@@ -1279,249 +1266,6 @@ void MSWinRTMediaSink::ReportEndOfStream()
 	_mutex.unlock();
 }
 
-#if 0
-/// Private methods
-// Start listening on the network server
-void CMediaSink::StartListening()
-{
-	ComPtr<CMediaSink> spThis = this;
-	concurrency::create_task(safe_cast<INetworkServer^>(_networkSender)->AcceptAsync()).then([spThis, this](concurrency::task<StreamSocketInformation^>& acceptTask)
-	{
-		IncomingConnectionEventArgs ^args;
-		ISinkCallback ^callback;
-		try
-		{
-			{
-				AutoLock lock(_critSec);
-				auto info = acceptTask.get();
-				ThrowIfError(CheckShutdown());
-				if (_callback == nullptr)
-				{
-					Throw(E_UNEXPECTED);
-				}
-				_remoteUrl = PrepareRemoteUrl(info);
-
-				_waitingConnectionId = LODWORD(GetTickCount64());
-				if (_waitingConnectionId == 0)
-				{
-					++_waitingConnectionId;
-				}
-
-				args = ref new IncomingConnectionEventArgs(this, _waitingConnectionId, _remoteUrl);
-				callback = _callback;
-			}
-
-			callback->FireIncomingConnection(args);
-		}
-		catch (Exception ^exc)
-		{
-			AutoLock lock(_critSec);
-			HandleError(exc->HResult);
-		}
-	});
-}
-
-void CMediaSink::StartReceiving(IMediaBufferWrapper *pReceiveBuffer)
-{
-	ComPtr<CMediaSink> spThis = this;
-	ComPtr<IMediaBufferWrapper> spReceiveBuffer = pReceiveBuffer;
-
-	concurrency::create_task(_networkSender->ReceiveAsync(pReceiveBuffer)).then([spThis, spReceiveBuffer, this](concurrency::task<void>& task)
-	{
-		AutoLock lock(_critSec);
-		try
-		{
-			StspOperation eOp = StspOperation_Unknown;
-			task.get();
-			ThrowIfError(CheckShutdown());
-
-			BYTE *pBuf = spReceiveBuffer->GetBuffer();
-			DWORD cbCurrentLen;
-			spReceiveBuffer->GetMediaBuffer()->GetCurrentLength(&cbCurrentLen);
-
-			// Validate if the data received from the client is sufficient to fit operation header which is the smallest size of message that we can handle.
-			if (cbCurrentLen != sizeof(StspOperationHeader))
-			{
-				Throw(MF_E_INVALID_FORMAT);
-			}
-
-			StspOperationHeader *pOpHeader = reinterpret_cast<StspOperationHeader *>(pBuf);
-			// We only support client's request for media description
-			if (pOpHeader->cbDataSize != 0 ||
-				((pOpHeader->eOperation != StspOperation_ClientRequestDescription) &&
-					(pOpHeader->eOperation != StspOperation_ClientRequestStart) &&
-					(pOpHeader->eOperation != StspOperation_ClientRequestStop)))
-			{
-				Throw(MF_E_INVALID_FORMAT);
-			}
-			else
-			{
-				eOp = pOpHeader->eOperation;
-			}
-
-			switch (eOp)
-			{
-			case StspOperation_ClientRequestDescription:
-				// Send description to the client
-				SendDescription();
-				break;
-			case StspOperation_ClientRequestStart:
-			{
-				_IsConnected = true;
-				if (_spClock)
-				{
-					ThrowIfError(_spClock->GetTime(&_llStartTime));
-				}
-
-				// We are now connected we can start streaming.
-				ForEach(_streams, SetConnectedFunc(true, _llStartTime));
-			}
-			break;
-			default:
-				Throw(MF_E_INVALID_FORMAT);
-				break;
-			}
-		}
-		catch (Exception ^exc)
-		{
-			HandleError(exc->HResult);
-		}
-	});
-}
-
-// Send packet
-concurrency::task<void> CMediaSink::SendPacket(Network::IBufferPacket *pPacket)
-{
-	return concurrency::create_task(_networkSender->SendAsync(pPacket));
-}
-
-// Send media description to the client
-void CMediaSink::SendDescription()
-{
-	// Size of the description buffer
-	const DWORD c_cStreams = _streams.GetCount();
-	const DWORD c_cbDescriptionSize = sizeof(StspDescription) + (c_cStreams - 1) * sizeof(StspStreamDescription);
-	const DWORD c_cbPacketSize = sizeof(StspOperationHeader) + c_cbDescriptionSize;
-
-	ComPtr<IMediaBufferWrapper> spBuffer;
-	ComPtr<IMediaBufferWrapper> *arrspAttributes = new ComPtr<IMediaBufferWrapper>[c_cStreams];
-	if (arrspAttributes == nullptr)
-	{
-		Throw(E_OUTOFMEMORY);
-	}
-
-	try
-	{
-		// Create send buffer
-		ThrowIfError(CreateMediaBufferWrapper(c_cbPacketSize, &spBuffer));
-
-		// Prepare operation header
-		BYTE *pBuf = spBuffer->GetBuffer();
-		StspOperationHeader *pOpHeader = reinterpret_cast<StspOperationHeader *>(pBuf);
-		pOpHeader->cbDataSize = c_cbDescriptionSize;
-		pOpHeader->eOperation = StspOperation_ServerDescription;
-
-		// Prepare description
-		StspDescription *pDescription = reinterpret_cast<StspDescription *>(pBuf + sizeof(StspOperationHeader));
-		pDescription->cNumStreams = c_cStreams;
-
-		StreamContainer::POSITION pos = _streams.FrontPosition();
-		StreamContainer::POSITION endPos = _streams.EndPosition();
-		DWORD nStream = 0;
-		for (;pos != endPos; pos = _streams.Next(pos), ++nStream)
-		{
-			ComPtr<IMFStreamSink> spStream;
-			ThrowIfError(_streams.GetItemPos(pos, &spStream));
-
-			// Fill out stream description
-			arrspAttributes[nStream] = FillStreamDescription(static_cast<CStreamSink *>(spStream.Get()), &pDescription->aStreams[nStream]);
-
-			// Add size of variable size attribute blob to size of the package.
-			pOpHeader->cbDataSize += pDescription->aStreams[nStream].cbAttributesSize;
-		}
-
-		// Set length of the packet
-		ThrowIfError(spBuffer->SetCurrentLength(c_cbPacketSize));
-
-		// Prepare packet to send
-		ComPtr<IBufferPacket> spPacket;
-
-		ThrowIfError(CreateBufferPacket(&spPacket));
-		// Add fixed size header and description to the packet
-		ThrowIfError(spPacket->AddBuffer(spBuffer.Get()));
-
-		for (DWORD nStream = 0; nStream < c_cStreams; ++nStream)
-		{
-			// Add variable size attributes.
-			ThrowIfError(spPacket->AddBuffer(arrspAttributes[nStream].Get()));
-		}
-
-		ComPtr<CMediaSink> spThis = this;
-		// Send the data.
-		SendPacket(spPacket.Get()).then([this, spThis](concurrency::task<void>& task)
-		{
-			try
-			{
-				task.get();
-			}
-			catch (Exception ^exc)
-			{
-				AutoLock lock(_critSec);
-				HandleError(exc->HResult);
-			}
-		});
-
-		// Keep receiving
-		StartReceiving(_spReceiveBuffer.Get());
-
-		delete[] arrspAttributes;
-	}
-	catch (Exception ^exc)
-	{
-		delete[] arrspAttributes;
-		throw;
-	}
-}
-
-// Fill stream description and prepare attributes blob.
-ComPtr<Network::IMediaBufferWrapper> CMediaSink::FillStreamDescription(CStreamSink *pStream, StspStreamDescription *pStreamDescription)
-{
-	assert(pStream != nullptr);
-	assert(pStreamDescription != nullptr);
-
-	ComPtr<IMFMediaType> spMediaType;
-
-	// Get current media type
-	ThrowIfError(pStream->GetCurrentMediaType(&spMediaType));
-
-	return pStream->FillStreamDescription(spMediaType.Get(), pStreamDescription);
-}
-
-void CMediaSink::HandleError(HRESULT hr)
-{
-	Shutdown();
-}
-
-String ^CMediaSink::PrepareRemoteUrl(StreamSocketInformation ^info)
-{
-	WCHAR szBuffer[MAX_PATH];
-
-	if (info->RemoteHostName->Type == HostNameType::Ipv4 || info->RemoteHostName->Type == HostNameType::DomainName)
-	{
-		ThrowIfError(StringCchPrintf(szBuffer, _countof(szBuffer), L"%s://%s", c_szStspScheme, info->RemoteHostName->RawName->Data()));
-	}
-	else if (info->RemoteHostName->Type == HostNameType::Ipv6)
-	{
-		ThrowIfError(StringCchPrintf(szBuffer, _countof(szBuffer), L"%s://[%s]", c_szStspScheme, info->RemoteHostName->RawName->Data()));
-	}
-	else
-	{
-		throw ref new InvalidArgumentException();
-	}
-
-	return ref new String(szBuffer);
-}
-#endif
 
 
 

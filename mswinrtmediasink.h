@@ -35,6 +35,66 @@ namespace libmswinrtvid {
 	class MSWinRTMediaSink;
 
 
+	template<class T>
+	class AsyncCallback : public IMFAsyncCallback
+	{
+	public:
+		typedef HRESULT(T::*InvokeFn)(IMFAsyncResult *pAsyncResult);
+
+		AsyncCallback(T *pParent, InvokeFn fn) : m_pParent(pParent), m_pInvokeFn(fn)
+		{
+		}
+
+		// IUnknown
+		STDMETHODIMP_(ULONG) AddRef() {
+			// Delegate to parent class.
+			return m_pParent->AddRef();
+		}
+		STDMETHODIMP_(ULONG) Release() {
+			// Delegate to parent class.
+			return m_pParent->Release();
+		}
+		STDMETHODIMP QueryInterface(REFIID iid, void** ppv)
+		{
+			if (!ppv)
+			{
+				return E_POINTER;
+			}
+			if (iid == __uuidof(IUnknown))
+			{
+				*ppv = static_cast<IUnknown*>(static_cast<IMFAsyncCallback*>(this));
+			}
+			else if (iid == __uuidof(IMFAsyncCallback))
+			{
+				*ppv = static_cast<IMFAsyncCallback*>(this);
+			}
+			else
+			{
+				*ppv = NULL;
+				return E_NOINTERFACE;
+			}
+			AddRef();
+			return S_OK;
+		}
+
+
+		// IMFAsyncCallback methods
+		STDMETHODIMP GetParameters(DWORD*, DWORD*)
+		{
+			// Implementation of this method is optional.
+			return E_NOTIMPL;
+		}
+
+		STDMETHODIMP Invoke(IMFAsyncResult* pAsyncResult)
+		{
+			return (m_pParent->*m_pInvokeFn)(pAsyncResult);
+		}
+
+		T *m_pParent;
+		InvokeFn m_pInvokeFn;
+	};
+
+
 	class MSWinRTStreamSink : public IMFStreamSink, public IMFMediaTypeHandler
 	{
 	public:
@@ -63,15 +123,15 @@ namespace libmswinrtvid {
 			Op_Count                // Number of operations
 		};
 
-		// CAsyncOperation:
+		// MSWinRTAsyncOperation:
 		// Used to queue asynchronous operations. When we call MFPutWorkItem, we use this
 		// object for the callback state (pState). Then, when the callback is invoked,
 		// we can use the object to determine which asynchronous operation to perform.
 
-		class CAsyncOperation : public IUnknown
+		class MSWinRTAsyncOperation : public IUnknown
 		{
 		public:
-			CAsyncOperation(StreamOperation op);
+			MSWinRTAsyncOperation(StreamOperation op);
 
 			StreamOperation m_op;   // The operation to perform.
 
@@ -82,7 +142,7 @@ namespace libmswinrtvid {
 
 		private:
 			long _cRef;
-			virtual ~CAsyncOperation();
+			virtual ~MSWinRTAsyncOperation();
 		};
 
 	public:
@@ -139,23 +199,22 @@ namespace libmswinrtvid {
 		HRESULT     ValidateOperation(StreamOperation op);
 		HRESULT     QueueAsyncOperation(StreamOperation op);
 		HRESULT     OnDispatchWorkItem(IMFAsyncResult *pAsyncResult);
-		void        DispatchProcessSample(CAsyncOperation *pOp);
+		void        DispatchProcessSample(MSWinRTAsyncOperation *pOp);
 		bool        DropSamplesFromQueue();
 		bool        SendSampleFromQueue();
 		bool        ProcessSamplesFromQueue(bool fFlush);
 		void        ProcessFormatChange(IMFMediaType *pMediaType);
+		HRESULT		PrepareSample(IMFSample *pSample);
 		void        HandleError(HRESULT hr);
 
 	private:
 		std::recursive_mutex _mutex;
 
 		long                        _cRef;                      // reference count
-		//CritSec                     _critSec;                   // critical section for thread safety
 
 		DWORD                       _dwIdentifier;
 		State                       _state;
 		bool                        _IsShutdown;                // Flag to indicate if Shutdown() method was called.
-		bool                        _Connected;
 		bool                        _fGetStartTimeFromSample;
 		bool                        _fWaitingForFirstSample;
 		bool                        _fFirstSampleAfterConnect;
@@ -175,9 +234,7 @@ namespace libmswinrtvid {
 		ComPtrList<IUnknown>        _SampleQueue;               // Queue to hold samples and markers.
 																// Applies to: ProcessSample, PlaceMarker
 
-		//Network::INetworkChannel^    _networkSender;
-
-		//AsyncCallback<CStreamSink>  _WorkQueueCB;              // Callback for the work queue.
+		AsyncCallback<MSWinRTStreamSink>  _WorkQueueCB;              // Callback for the work queue.
 
 		ComPtr<IUnknown>            _spFTM;
 	};
@@ -197,14 +254,14 @@ namespace libmswinrtvid {
 		MSWinRTMediaSink();
 		~MSWinRTMediaSink();
 
-		HRESULT RuntimeClassInitialize(/*ISinkCallback ^callback,*/ Windows::Media::MediaProperties::IMediaEncodingProperties ^videoEncodingProperties);
+		HRESULT RuntimeClassInitialize(Windows::Media::MediaProperties::IMediaEncodingProperties ^videoEncodingProperties);
 
 		// IMediaExtension
 		IFACEMETHOD(SetProperties) (ABI::Windows::Foundation::Collections::IPropertySet *pConfiguration) { return S_OK; }
 
 		// IMFMediaSink methods
 		IFACEMETHOD(GetCharacteristics) (DWORD *pdwCharacteristics);
-		IFACEMETHOD(AddStreamSink)(/* [in] */ DWORD dwStreamSinkIdentifier, /* [in] */ IMFMediaType *pMediaType, /* [out] */ IMFStreamSink **ppStreamSink);
+		IFACEMETHOD(AddStreamSink) (/* [in] */ DWORD dwStreamSinkIdentifier, /* [in] */ IMFMediaType *pMediaType, /* [out] */ IMFStreamSink **ppStreamSink);
 		IFACEMETHOD(RemoveStreamSink) (DWORD dwStreamSinkIdentifier);
 		IFACEMETHOD(GetStreamSinkCount) (_Out_ DWORD *pcStreamSinkCount);
 		IFACEMETHOD(GetStreamSinkByIndex) (DWORD dwIndex, _Outptr_ IMFStreamSink **ppStreamSink);
@@ -225,17 +282,6 @@ namespace libmswinrtvid {
 		void ReportEndOfStream();
 
 	private:
-		//typedef ComPtrList<IMFStreamSink> StreamContainer;
-
-	private:
-		//void StartListening();
-		//void StartReceiving(Network::IMediaBufferWrapper *pReceiveBuffer);
-		//concurrency::task<void> SendPacket(Network::IBufferPacket *pPacket);
-		//String ^PrepareRemoteUrl(StreamSocketInformation ^info);
-		//void SendDescription();
-
-		//ComPtr<Network::IMediaBufferWrapper> FillStreamDescription(CStreamSink *pStream, StspStreamDescription *pStreamDescription);
-
 		void HandleError(HRESULT hr);
 
 		void SetVideoStreamProperties(_In_opt_ Windows::Media::MediaProperties::IMediaEncodingProperties ^mediaEncodingProperties);
@@ -249,20 +295,15 @@ namespace libmswinrtvid {
 
 	private:
 		std::recursive_mutex _mutex;
-		ComPtrList<IMFStreamSink> _streams;
+		ComPtr<IMFStreamSink> _stream;
 
 		long                            _cRef;                      // reference count
-		//CritSec                         _critSec;                   // critical section for thread safety
 
 		bool                            _IsShutdown;                // Flag to indicate if Shutdown() method was called.
 		bool                            _IsConnected;
 		LONGLONG                        _llStartTime;
 
 		ComPtr<IMFPresentationClock>    _spClock;                   // Presentation clock.
-		//Network::INetworkChannel^       _networkSender;
-		//ISinkCallback^                  _callback;
-		//ComPtr<Network::IMediaBufferWrapper> _spReceiveBuffer;
-		//StreamContainer                 _streams;
 		long                            _cStreamsEnded;
 		String^                         _remoteUrl;
 

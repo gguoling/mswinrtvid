@@ -30,28 +30,12 @@ using namespace Windows::Storage;
 using namespace libmswinrtvid;
 
 
-static const float defaultFps = 15.0f;
-static const int defaultBitrate = 384000;
-
-
 bool MSWinRTCap::smInstantiated = false;
 
 
-#define MS_H264_CONF(required_bitrate, bitrate_limit, resolution, fps, ncpus) \
-	{ required_bitrate, bitrate_limit, { MS_VIDEO_SIZE_ ## resolution ## _W, MS_VIDEO_SIZE_ ## resolution ## _H }, fps, ncpus, NULL }
-
-static const MSVideoConfiguration h264_conf_list[] = {
-	MS_H264_CONF( 300000, 500000,   VGA, 12, 1),
-	MS_H264_CONF( 170000, 300000,  QVGA, 12, 1),
-	MS_H264_CONF( 120000,  170000, QVGA,  8, 1),
-	MS_H264_CONF(      0,  120000, QVGA,  5 ,1)
-};
-
-
 MSWinRTCap::MSWinRTCap()
-	: mIsInitialized(false), mIsActivated(false), mIsStarted(false),
-	mRfc3984Packer(NULL), mAllocator(NULL), mPackerMode(1), mStartTime(0), mSamplesCount(0), mBitrate(defaultBitrate),
-	mCameraSensorRotation(0), mDeviceOrientation(0), mPixFmt(MS_YUV420P)
+	: mIsInitialized(false), mIsActivated(false), mIsStarted(false), mFps(15),
+	mAllocator(NULL), mStartTime(0), mCameraSensorRotation(0), mDeviceOrientation(0)
 {
 	if (smInstantiated) {
 		ms_error("[MSWinRTCap] An video capture filter is already instantiated. A second one can not be created.");
@@ -62,7 +46,6 @@ MSWinRTCap::MSWinRTCap()
 	ms_queue_init(&mSampleToSendQueue);
 	ms_queue_init(&mSampleToFreeQueue);
 	mAllocator = ms_yuv_buf_allocator_new();
-	mVConf = ms_video_find_best_configuration_for_bitrate(h264_conf_list, mBitrate, ms_get_cpu_count());
 
 	mActivationCompleted = CreateEventEx(NULL, L"Local\\MSWinRTCapActivation", 0, EVENT_ALL_ACCESS);
 	if (!mActivationCompleted) {
@@ -122,11 +105,6 @@ int MSWinRTCap::activate()
 {
 	if (!mIsInitialized) return -1;
 
-	mRfc3984Packer = rfc3984_new();
-	rfc3984_set_mode(mRfc3984Packer, mPackerMode);
-	rfc3984_enable_stap_a(mRfc3984Packer, FALSE);
-	ms_video_starter_init(&mStarter);
-
 	mCapture = ref new MediaCapture();
 	MediaCaptureInitializationSettings^ initSettings = ref new MediaCaptureInitializationSettings();
 	initSettings->MediaCategory = MediaCategory::Communications;
@@ -164,10 +142,6 @@ int MSWinRTCap::activate()
 
 int MSWinRTCap::deactivate()
 {
-	if (mRfc3984Packer != nullptr) {
-		rfc3984_destroy(mRfc3984Packer);
-		mRfc3984Packer = nullptr;
-	}
 	mCameraSensorRotation = 0;
 	mIsActivated = false;
 	return 0;
@@ -200,20 +174,23 @@ void MSWinRTCap::start()
 		WaitForSingleObjectEx(mPreviewStartCompleted, INFINITE, FALSE);
 
 		MediaEncodingProfile^ mediaEncodingProfile = mEncodingProfile;
-		Concurrency::create_task(mMediaSink->InitializeAsync(mediaEncodingProfile->Video)).then([this, mediaEncodingProfile](Windows::Media::IMediaExtension^ mediaExtension)
-		{
-			return Concurrency::create_task(mCapture->StartRecordToCustomSinkAsync(mediaEncodingProfile, mediaExtension)).then([this](Concurrency::task<void>& asyncInfo)
-			{
-				try {
-					asyncInfo.get();
-					//_recordingStarted = true;
-				}
-				catch (Platform::Exception^) {
-					//CleanupSink();
-					throw;
-				}
-			});
+		IAsyncOperation<Windows::Media::IMediaExtension^>^ op = mMediaSink->InitializeAsync(mEncodingProfile->Video);
+		op->Completed = ref new AsyncOperationCompletedHandler<Windows::Media::IMediaExtension^>(
+				[this](IAsyncOperation<Windows::Media::IMediaExtension^>^ asyncOp, Windows::Foundation::AsyncStatus asyncStatus) {
+			if (asyncStatus == Windows::Foundation::AsyncStatus::Completed) {
+				Windows::Media::IMediaExtension^ mediaExtension = asyncOp->GetResults();
+				IAsyncAction^ action = mCapture->StartRecordToCustomSinkAsync(mEncodingProfile, mediaExtension);
+				action->Completed = ref new AsyncActionCompletedHandler([this](IAsyncAction^ asyncAction, Windows::Foundation::AsyncStatus asyncStatus) {
+					if (asyncStatus == Windows::Foundation::AsyncStatus::Completed)
+						mIsStarted = true;
+					SetEvent(mStartCompleted);
+				});
+			} else {
+				// TODO
+				SetEvent(mStartCompleted);
+			}
 		});
+		WaitForSingleObjectEx(mStartCompleted, INFINITE, FALSE);
 	}
 }
 
@@ -246,23 +223,7 @@ int MSWinRTCap::feed(MSFilter *f)
 	}
 	// Send queued samples
 	while ((im = ms_queue_get(&mSampleToSendQueue)) != NULL) {
-		if (mPixFmt == MS_H264) {
-			MSQueue nalus;
-			ms_queue_init(&nalus);
-			uint32_t timestamp = mblk_get_timestamp_info(im);
-			bitstreamToMsgb(im->b_rptr, im->b_wptr - im->b_rptr, &nalus);
-			rfc3984_pack(mRfc3984Packer, &nalus, f->outputs[0], timestamp);
-			ms_queue_put(&mSampleToFreeQueue, im);
-		} else {
-			ms_queue_put(f->outputs[0], im);
-		}
-		
-		if (mSamplesCount == 0) {
-			ms_video_starter_first_frame(&mStarter, f->ticker->ticks);
-		} else if (ms_video_starter_need_i_frame(&mStarter, f->ticker->time)) {
-			requestIdrFrame();
-		}
-		mSamplesCount++;
+		ms_queue_put(f->outputs[0], im);
 	}
 	ms_mutex_unlock(&mMutex);
 
@@ -275,94 +236,53 @@ static void freeSample(void *sample)
 	delete[] sample;
 }
 
+#if 0
 void MSWinRTCap::OnSampleAvailable(ULONGLONG hnsPresentationTime, ULONGLONG hnsSampleDuration, DWORD cbSample, BYTE* pSample)
 {
 	MS_UNUSED(hnsSampleDuration);
 	mblk_t *m;
 	uint32_t timestamp = (uint32_t)((hnsPresentationTime / 10000LL) * 90LL);
 
-	if (mPixFmt == MS_H264) {
-		BYTE* pMem = new BYTE[cbSample];
-		memcpy(pMem, pSample, cbSample);
-		m = esballoc(pMem, cbSample, 0, freeSample);
-		m->b_wptr += cbSample;
-	} else {
-		int w = mVConf.vsize.width;
-		int h = mVConf.vsize.height;
-		if ((mDeviceOrientation % 180) == 0) {
-			w = mVConf.vsize.height;
-			h = mVConf.vsize.width;
-		}
-		uint8_t *y = (uint8_t *)pSample;
-		uint8_t *cbcr = (uint8_t *)(pSample + w * h);
-		m = copy_ycbcrbiplanar_to_true_yuv_with_rotation(mAllocator, y, cbcr, 0, w, h, w, w, TRUE);
+	int w = mVConf.vsize.width;
+	int h = mVConf.vsize.height;
+	if ((mDeviceOrientation % 180) == 0) {
+		w = mVConf.vsize.height;
+		h = mVConf.vsize.width;
 	}
+	uint8_t *y = (uint8_t *)pSample;
+	uint8_t *cbcr = (uint8_t *)(pSample + w * h);
+	m = copy_ycbcrbiplanar_to_true_yuv_with_rotation(mAllocator, y, cbcr, 0, w, h, w, w, TRUE);
 	mblk_set_timestamp_info(m, timestamp);
 
 	ms_mutex_lock(&mMutex);
 	ms_queue_put(&mSampleToSendQueue, m);
 	ms_mutex_unlock(&mMutex);
 }
+#endif
 
 
 void MSWinRTCap::setFps(float fps)
 {
-	mVConf.fps = fps;
-	setConfiguration(&mVConf);
-}
-
-void MSWinRTCap::setBitrate(int bitrate)
-{
-	if (mIsActivated) {
-		/* Encoding is already ongoing, do not change video size, only bitrate. */
-		mVConf.required_bitrate = bitrate;
-		setConfiguration(&mVConf);
-	} else {
-		MSVideoConfiguration best_vconf = ms_video_find_best_configuration_for_bitrate(h264_conf_list, bitrate, ms_get_cpu_count());
-		setConfiguration(&best_vconf);
-	}
+	mFps = fps;
+	applyFps();
 }
 
 MSVideoSize MSWinRTCap::getVideoSize()
 {
 	MSVideoSize vs;
 	if ((mDeviceOrientation % 180) == 0) {
-		vs.width = mVConf.vsize.height;
-		vs.height = mVConf.vsize.width;
+		vs.width = mVideoSize.height;
+		vs.height = mVideoSize.width;
 	} else {
-		vs = mVConf.vsize;
+		vs = mVideoSize;
 	}
 	return vs;
 }
 
 void MSWinRTCap::setVideoSize(MSVideoSize vs)
 {
-	MSVideoConfiguration best_vconf;
-	best_vconf = ms_video_find_best_configuration_for_size(h264_conf_list, vs, ms_get_cpu_count());
-	mVConf.vsize = vs;
-	mVConf.fps = best_vconf.fps;
-	mVConf.bitrate_limit = best_vconf.bitrate_limit;
-	selectBestVideoSize();
-	setConfiguration(&mVConf);
-}
-
-const MSVideoConfiguration * MSWinRTCap::getConfigurationList()
-{
-	return h264_conf_list;
-}
-
-void MSWinRTCap::setConfiguration(const MSVideoConfiguration *vconf)
-{
-	if (vconf != &mVConf) memcpy(&mVConf, vconf, sizeof(MSVideoConfiguration));
-
-	if (mVConf.required_bitrate > mVConf.bitrate_limit)
-		mVConf.required_bitrate = mVConf.bitrate_limit;
-
-	if (mIsActivated) {
-		applyVideoSize();
-	}
-
-	applyFps();
+	mVideoSize = vs;
+	applyVideoSize();
 }
 
 void MSWinRTCap::setDeviceOrientation(int degrees)
@@ -370,20 +290,11 @@ void MSWinRTCap::setDeviceOrientation(int degrees)
 	mDeviceOrientation = degrees;
 }
 
-void MSWinRTCap::requestIdrFrame()
-{
-	if (mIsStarted) {
-		if (mPixFmt == MS_H264) {
-			Platform::Boolean value = true;
-		}
-	}
-}
-
 
 void MSWinRTCap::applyFps()
 {
 	if (mEncodingProfile != nullptr) {
-		mEncodingProfile->Video->FrameRate->Numerator = (unsigned int)mVConf.fps;
+		mEncodingProfile->Video->FrameRate->Numerator = (unsigned int)mFps;
 		mEncodingProfile->Video->FrameRate->Denominator = 1;
 	}
 }
@@ -391,79 +302,17 @@ void MSWinRTCap::applyFps()
 void MSWinRTCap::applyVideoSize()
 {
 	if (mEncodingProfile != nullptr) {
-		mEncodingProfile->Video->Width = mVConf.vsize.width;
-		mEncodingProfile->Video->Height = mVConf.vsize.height;
+		mEncodingProfile->Video->Width = mVideoSize.width;
+		mEncodingProfile->Video->Height = mVideoSize.height;
 	}
-}
-
-void MSWinRTCap::bitstreamToMsgb(uint8_t *encoded_buf, size_t size, MSQueue *nalus) {
-	size_t idx = 0;
-	size_t frame_start_idx;
-	mblk_t *m;
-	int nal_len;
-
-	if ((size < 5) || (encoded_buf[0] != 0) || (encoded_buf[1] != 0) || (encoded_buf[2] != 0) || (encoded_buf[3] != 1))
-		return;
-
-	frame_start_idx = idx = 4;
-	while (frame_start_idx < size) {
-		uint8_t *buf = encoded_buf + idx;
-		while ((buf = (uint8_t *)memchr(buf, 0, encoded_buf + size - buf)) != NULL) {
-			if (encoded_buf + size - buf < 4)
-				break;
-			if (*((int*)(buf)) == 0x01000000)
-				break;
-			++buf;
-		}
-
-		idx = buf ? buf - encoded_buf : size;
-		nal_len = idx - frame_start_idx;
-		if (nal_len > 0) {
-			m = esballoc(&encoded_buf[frame_start_idx], nal_len, 0, NULL);
-			m->b_wptr += nal_len;
-			ms_queue_put(nalus, m);
-		}
-		frame_start_idx = idx = idx + 4;
-	}
-}
-
-bool MSWinRTCap::selectBestVideoSize()
-{
-	MSVideoSize requestedSize;
-	requestedSize.width = mVConf.vsize.width;
-	requestedSize.height = mVConf.vsize.height;
-	MediaCapture^ mediaCapture = ref new MediaCapture();
-	if (MediaCapture::IsVideoProfileSupported(mDeviceId)) {
-		Windows::Foundation::Collections::IVectorView<MediaCaptureVideoProfile^>^ profiles = mediaCapture->FindAllVideoProfiles(mDeviceId);
-		for (unsigned int i = 0; i < profiles->Size; i++) {
-			MediaCaptureVideoProfile^ profile = profiles->GetAt(i);
-			Windows::Foundation::Collections::IVectorView<MediaCaptureVideoProfileMediaDescription^>^ descriptions = profile->SupportedRecordMediaDescription;
-			for (unsigned int j = 0; j < descriptions->Size; j++) {
-				MediaCaptureVideoProfileMediaDescription^ description = descriptions->GetAt(j);
-			}
-		}
-	} else {
-		ms_warning("[MSWinRTCap] Video profile is not supported by the camera, default to requested video size");
-		mVConf.vsize.width = requestedSize.width;
-		mVConf.vsize.height = requestedSize.height;
-		return false;
-	}
-	return true;
 }
 
 void MSWinRTCap::configure()
 {
-	if (mPixFmt == MS_H264) {
-		mEncodingProfile = MediaEncodingProfile::CreateMp4(VideoEncodingQuality::Auto);
-		mEncodingProfile->Container = nullptr;
-		mEncodingProfile->Video->ProfileId = H264ProfileIds::Baseline;
-		//mEncodingProfile->Video->Width = mVConf.vsize.width;
-		//mEncodingProfile->Video->Height = mVConf.vsize.height;
-	} else {
-		mEncodingProfile = ref new MediaEncodingProfile();
-		mEncodingProfile->Container = nullptr;
-		mEncodingProfile->Video = VideoEncodingProperties::CreateUncompressed(MediaEncodingSubtypes::Nv12, mVConf.vsize.width, mVConf.vsize.height);
-	}
+	mEncodingProfile = ref new MediaEncodingProfile();
+	mEncodingProfile->Audio = nullptr;
+	mEncodingProfile->Container = nullptr;
+	mEncodingProfile->Video = VideoEncodingProperties::CreateUncompressed(MediaEncodingSubtypes::Nv12, mVideoSize.width, mVideoSize.height);
 }
 
 void MSWinRTCap::addCamera(MSWebCamManager *manager, MSWebCamDesc *desc, Platform::String^ DeviceId, Platform::String^ DeviceName)
@@ -522,8 +371,4 @@ void MSWinRTCap::detectCameras(MSWebCamManager *manager, MSWebCamDesc *desc)
 		SetEvent(eventCompleted);
 	});
 	WaitForSingleObjectEx(eventCompleted, INFINITE, FALSE);
-}
-
-void MSWinRTCap::printProperties()
-{
 }
