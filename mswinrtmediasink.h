@@ -32,6 +32,7 @@ using namespace Windows::Media::MediaProperties;
 
 namespace libmswinrtvid {
 	//interface class ISinkCallback;
+	class MSWinRTCap;
 	class MSWinRTMediaSink;
 
 
@@ -280,6 +281,8 @@ namespace libmswinrtvid {
 		LONGLONG GetStartTime() const { return _llStartTime; }
 
 		void ReportEndOfStream();
+		void SetCaptureFilter(MSWinRTCap *capture) { _capture = capture; }
+		void OnSampleAvailable(BYTE *buf, DWORD bufLen, LONGLONG presentationTime);
 
 	private:
 		void HandleError(HRESULT hr);
@@ -296,6 +299,7 @@ namespace libmswinrtvid {
 	private:
 		std::recursive_mutex _mutex;
 		ComPtr<IMFStreamSink> _stream;
+		MSWinRTCap *_capture;
 
 		long                            _cRef;                      // reference count
 
@@ -308,34 +312,5 @@ namespace libmswinrtvid {
 		String^                         _remoteUrl;
 
 		DWORD                           _waitingConnectionId;
-	};
-
-
-	public ref class MSWinRTMediaSinkProxy sealed
-	{
-	public:
-		MSWinRTMediaSinkProxy();
-		virtual ~MSWinRTMediaSinkProxy();
-
-		Windows::Media::IMediaExtension ^GetMFExtensions();
-		Windows::Foundation::IAsyncOperation<Windows::Media::IMediaExtension^>^ InitializeAsync(Windows::Media::MediaProperties::IMediaEncodingProperties ^videoEncodingProperties);
-
-	internal:
-		void SetVideoStreamProperties(_In_opt_ Windows::Media::MediaProperties::IMediaEncodingProperties ^mediaEncodingProperties);
-
-	private:
-		void OnShutdown();
-
-		void CheckShutdown()
-		{
-			if (_fShutdown) {
-				throw ref new Exception(MF_E_SHUTDOWN);
-			}
-		}
-
-	private:
-		std::mutex _mutex;
-		ComPtr<IMFMediaSink> _spMediaSink;
-		bool _fShutdown;
 	};
 }

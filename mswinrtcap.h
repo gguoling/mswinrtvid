@@ -53,7 +53,7 @@ namespace libmswinrtvid
 		void stop();
 		int feed(MSFilter *f);
 
-		//void OnSampleAvailable(ULONGLONG hnsPresentationTime, ULONGLONG hnsSampleDuration, DWORD cbSample, BYTE* pSample);
+		void OnSampleAvailable(BYTE *buf, DWORD bufLen, LONGLONG presentationTime);
 
 		void setCaptureElement(Windows::UI::Xaml::Controls::CaptureElement^ captureElement) { mCaptureElement = captureElement; };
 		void setDeviceId(Platform::String^ id) { mDeviceId = id; };
@@ -96,6 +96,6 @@ namespace libmswinrtvid
 		Platform::String^ mDeviceId;
 		Platform::Agile<MediaCapture^> mCapture;
 		MediaEncodingProfile^ mEncodingProfile;
-		MSWinRTMediaSinkProxy^ mMediaSink;
+		ComPtr<IMFMediaSink> mMediaSink;
 	};
 }

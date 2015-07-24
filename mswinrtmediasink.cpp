@@ -1,4 +1,5 @@
 #include "mswinrtmediasink.h"
+#include "mswinrtcap.h"
 #include <mediastreamer2/mscommon.h>
 
 using namespace libmswinrtvid;
@@ -970,7 +971,7 @@ HRESULT MSWinRTStreamSink::PrepareSample(IMFSample *pSample)
 			DWORD currentLength = 0;
 			hr = spMediaBuffer->Lock(&pBuffer, NULL, &currentLength);
 			if (SUCCEEDED(hr)) {
-				// TODO
+				static_cast<MSWinRTMediaSink *>(_spSink.Get())->OnSampleAvailable(pBuffer, currentLength, llSampleTime);
 				hr = spMediaBuffer->Unlock();
 				if (FAILED(hr)) break;
 			}
@@ -1266,76 +1267,10 @@ void MSWinRTMediaSink::ReportEndOfStream()
 	_mutex.unlock();
 }
 
-
-
-
-
-MSWinRTMediaSinkProxy::MSWinRTMediaSinkProxy()
+void MSWinRTMediaSink::OnSampleAvailable(BYTE *buf, DWORD bufLen, LONGLONG presentationTime)
 {
-}
-
-MSWinRTMediaSinkProxy::~MSWinRTMediaSinkProxy()
-{
-	_mutex.lock();
-	if (_spMediaSink != nullptr) {
-		_spMediaSink->Shutdown();
-		_spMediaSink = nullptr;
+	ms_message("MSWinRTMediaSink::OnSampleAvailable");
+	if (_capture != NULL) {
+		_capture->OnSampleAvailable(buf, bufLen, presentationTime);
 	}
-	_mutex.unlock();
-}
-
-Windows::Media::IMediaExtension ^MSWinRTMediaSinkProxy::GetMFExtensions() {
-	_mutex.lock();
-	if (_spMediaSink == nullptr) {
-		_mutex.unlock();
-		throw ref new Exception(MF_E_NOT_INITIALIZED);
-	}
-	ComPtr<IInspectable> spInspectable;
-	HRESULT hr = _spMediaSink.As(&spInspectable);
-	if (FAILED(hr)) {
-		_mutex.unlock();
-		throw ref new Exception(hr);
-	}
-	_mutex.unlock();
-	return safe_cast<IMediaExtension^>(reinterpret_cast<Object^>(spInspectable.Get()));
-}
-
-
-Windows::Foundation::IAsyncOperation<IMediaExtension^>^ MSWinRTMediaSinkProxy::InitializeAsync(Windows::Media::MediaProperties::IMediaEncodingProperties ^videoEncodingProperties)
-{
-	return concurrency::create_async([this, videoEncodingProperties]()
-	{
-		_mutex.lock();
-		CheckShutdown();
-		if (_spMediaSink != nullptr) {
-			_mutex.unlock();
-			throw ref new Exception(MF_E_ALREADY_INITIALIZED);
-		}
-		// Prepare the MF extension
-		HRESULT hr = MakeAndInitialize<MSWinRTMediaSink>(&_spMediaSink, /*ref new StspSinkCallback(this), */ videoEncodingProperties);
-		if (FAILED(hr)) {
-			_mutex.unlock();
-			throw ref new Exception(hr);
-		}
-		ComPtr<IInspectable> spInspectable;
-		hr = _spMediaSink.As(&spInspectable);
-		if (FAILED(hr)) {
-			_mutex.unlock();
-			throw ref new Exception(hr);
-		}
-		_mutex.unlock();
-		return safe_cast<IMediaExtension^>(reinterpret_cast<Object^>(spInspectable.Get()));
-	});
-}
-
-void MSWinRTMediaSinkProxy::OnShutdown()
-{
-	_mutex.lock();
-	if (_fShutdown)	{
-		_mutex.unlock();
-		return;
-	}
-	_fShutdown = true;
-	_spMediaSink = nullptr;
-	_mutex.unlock();
 }

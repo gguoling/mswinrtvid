@@ -42,6 +42,9 @@ MSWinRTCap::MSWinRTCap()
 		return;
 	}
 
+	mVideoSize.width = MS_VIDEO_SIZE_CIF_W;
+	mVideoSize.height = MS_VIDEO_SIZE_CIF_H;
+
 	ms_mutex_init(&mMutex, NULL);
 	ms_queue_init(&mSampleToSendQueue);
 	ms_queue_init(&mSampleToFreeQueue);
@@ -135,7 +138,6 @@ int MSWinRTCap::activate()
 	WaitForSingleObjectEx(mActivationCompleted, INFINITE, FALSE);
 	if (mIsActivated && (mCaptureElement != nullptr)) {
 		mCaptureElement->Source = mCapture.Get();
-		mMediaSink = ref new MSWinRTMediaSinkProxy();
 	}
 	return 0;
 }
@@ -174,21 +176,17 @@ void MSWinRTCap::start()
 		WaitForSingleObjectEx(mPreviewStartCompleted, INFINITE, FALSE);
 
 		MediaEncodingProfile^ mediaEncodingProfile = mEncodingProfile;
-		IAsyncOperation<Windows::Media::IMediaExtension^>^ op = mMediaSink->InitializeAsync(mEncodingProfile->Video);
-		op->Completed = ref new AsyncOperationCompletedHandler<Windows::Media::IMediaExtension^>(
-				[this](IAsyncOperation<Windows::Media::IMediaExtension^>^ asyncOp, Windows::Foundation::AsyncStatus asyncStatus) {
-			if (asyncStatus == Windows::Foundation::AsyncStatus::Completed) {
-				Windows::Media::IMediaExtension^ mediaExtension = asyncOp->GetResults();
-				IAsyncAction^ action = mCapture->StartRecordToCustomSinkAsync(mEncodingProfile, mediaExtension);
-				action->Completed = ref new AsyncActionCompletedHandler([this](IAsyncAction^ asyncAction, Windows::Foundation::AsyncStatus asyncStatus) {
-					if (asyncStatus == Windows::Foundation::AsyncStatus::Completed)
-						mIsStarted = true;
-					SetEvent(mStartCompleted);
-				});
-			} else {
-				// TODO
-				SetEvent(mStartCompleted);
-			}
+		MakeAndInitialize<MSWinRTMediaSink>(&mMediaSink, mEncodingProfile->Video);
+		static_cast<MSWinRTMediaSink *>(mMediaSink.Get())->SetCaptureFilter(this);
+		ComPtr<IInspectable> spInspectable;
+		HRESULT hr = mMediaSink.As(&spInspectable);
+		if (FAILED(hr)) return;
+		IMediaExtension^ mediaExtension = safe_cast<IMediaExtension^>(reinterpret_cast<Object^>(spInspectable.Get()));
+		IAsyncAction^ action = mCapture->StartRecordToCustomSinkAsync(mEncodingProfile, mediaExtension);
+		action->Completed = ref new AsyncActionCompletedHandler([this](IAsyncAction^ asyncAction, Windows::Foundation::AsyncStatus asyncStatus) {
+			if (asyncStatus == Windows::Foundation::AsyncStatus::Completed)
+				mIsStarted = true;
+			SetEvent(mStartCompleted);
 		});
 		WaitForSingleObjectEx(mStartCompleted, INFINITE, FALSE);
 	}
@@ -236,21 +234,19 @@ static void freeSample(void *sample)
 	delete[] sample;
 }
 
-#if 0
-void MSWinRTCap::OnSampleAvailable(ULONGLONG hnsPresentationTime, ULONGLONG hnsSampleDuration, DWORD cbSample, BYTE* pSample)
+void MSWinRTCap::OnSampleAvailable(BYTE *buf, DWORD bufLen, LONGLONG presentationTime)
 {
-	MS_UNUSED(hnsSampleDuration);
 	mblk_t *m;
-	uint32_t timestamp = (uint32_t)((hnsPresentationTime / 10000LL) * 90LL);
+	uint32_t timestamp = (uint32_t)((presentationTime / 10000LL) * 90LL);
 
-	int w = mVConf.vsize.width;
-	int h = mVConf.vsize.height;
+	int w = mVideoSize.width;
+	int h = mVideoSize.height;
 	if ((mDeviceOrientation % 180) == 0) {
-		w = mVConf.vsize.height;
-		h = mVConf.vsize.width;
+		w = mVideoSize.height;
+		h = mVideoSize.width;
 	}
-	uint8_t *y = (uint8_t *)pSample;
-	uint8_t *cbcr = (uint8_t *)(pSample + w * h);
+	uint8_t *y = (uint8_t *)buf;
+	uint8_t *cbcr = (uint8_t *)(buf + w * h);
 	m = copy_ycbcrbiplanar_to_true_yuv_with_rotation(mAllocator, y, cbcr, 0, w, h, w, w, TRUE);
 	mblk_set_timestamp_info(m, timestamp);
 
@@ -258,7 +254,6 @@ void MSWinRTCap::OnSampleAvailable(ULONGLONG hnsPresentationTime, ULONGLONG hnsS
 	ms_queue_put(&mSampleToSendQueue, m);
 	ms_mutex_unlock(&mMutex);
 }
-#endif
 
 
 void MSWinRTCap::setFps(float fps)
