@@ -218,6 +218,8 @@ void MSWinRTCap::stop()
 	static_cast<MSWinRTMediaSink *>(mMediaSink.Get())->SetCaptureFilter(NULL);
 	IAsyncAction^ action = mCapture->StopRecordAsync();
 	action->Completed = ref new AsyncActionCompletedHandler([this](IAsyncAction^ asyncAction, Windows::Foundation::AsyncStatus asyncStatus) {
+		static_cast<MSWinRTMediaSink *>(mMediaSink.Get())->Shutdown();
+		mMediaSink = nullptr;
 		SetEvent(mStopCompleted);
 	});
 	WaitForSingleObjectEx(mStopCompleted, INFINITE, FALSE);

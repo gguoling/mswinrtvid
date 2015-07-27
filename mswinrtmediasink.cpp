@@ -74,6 +74,102 @@ static void ConvertPropertiesToMediaType(_In_ IMediaEncodingProperties ^mep, _Ou
 
 
 
+MSWinRTMarker::MSWinRTMarker(MFSTREAMSINK_MARKER_TYPE eMarkerType) : _cRef(1), _eMarkerType(eMarkerType)
+{
+	ZeroMemory(&_varMarkerValue, sizeof(_varMarkerValue));
+	ZeroMemory(&_varContextValue, sizeof(_varContextValue));
+}
+
+MSWinRTMarker::~MSWinRTMarker()
+{
+	PropVariantClear(&_varMarkerValue);
+	PropVariantClear(&_varContextValue);
+}
+
+HRESULT MSWinRTMarker::Create(MFSTREAMSINK_MARKER_TYPE eMarkerType, const PROPVARIANT *pvarMarkerValue, const PROPVARIANT *pvarContextValue, IMarker **ppMarker)
+{
+	if (ppMarker == nullptr)
+		return E_POINTER;
+
+	HRESULT hr = S_OK;
+	ComPtr<MSWinRTMarker> spMarker;
+
+	spMarker.Attach(new (std::nothrow) MSWinRTMarker(eMarkerType));
+	if (spMarker == nullptr)
+		hr = E_OUTOFMEMORY;
+	// Copy the marker data.
+	if (SUCCEEDED(hr)) {
+		if (pvarMarkerValue)
+			hr = PropVariantCopy(&spMarker->_varMarkerValue, pvarMarkerValue);
+	}
+	if (SUCCEEDED(hr)) {
+		if (pvarContextValue)
+			hr = PropVariantCopy(&spMarker->_varContextValue, pvarContextValue);
+	}
+	if (SUCCEEDED(hr))
+		*ppMarker = spMarker.Detach();
+	return hr;
+}
+
+// IUnknown methods.
+
+IFACEMETHODIMP_(ULONG) MSWinRTMarker::AddRef()
+{
+	return InterlockedIncrement(&_cRef);
+}
+
+IFACEMETHODIMP_(ULONG) MSWinRTMarker::Release()
+{
+	ULONG cRef = InterlockedDecrement(&_cRef);
+	if (cRef == 0)
+		delete this;
+	return cRef;
+}
+
+IFACEMETHODIMP MSWinRTMarker::QueryInterface(REFIID riid, void **ppv)
+{
+	if (ppv == nullptr)
+		return E_POINTER;
+	(*ppv) = nullptr;
+
+	HRESULT hr = S_OK;
+	if (riid == IID_IUnknown || riid == __uuidof(IMarker)) {
+		(*ppv) = static_cast<IMarker*>(this);
+		AddRef();
+	} else {
+		hr = E_NOINTERFACE;
+	}
+	return hr;
+}
+
+// IMarker methods.
+
+IFACEMETHODIMP MSWinRTMarker::GetMarkerType(MFSTREAMSINK_MARKER_TYPE *pType)
+{
+	if (pType == NULL)
+		return E_POINTER;
+	*pType = _eMarkerType;
+	return S_OK;
+}
+
+IFACEMETHODIMP MSWinRTMarker::GetMarkerValue(PROPVARIANT *pvar)
+{
+	if (pvar == NULL)
+		return E_POINTER;
+	return PropVariantCopy(pvar, &_varMarkerValue);
+
+}
+
+IFACEMETHODIMP MSWinRTMarker::GetContext(PROPVARIANT *pvar)
+{
+	if (pvar == NULL)
+		return E_POINTER;
+	return PropVariantCopy(pvar, &_varContextValue);
+}
+
+
+
+
 
 MSWinRTStreamSink::MSWinRTStreamSink(DWORD dwIdentifier)
 	: _cRef(1)
@@ -350,14 +446,13 @@ IFACEMETHODIMP MSWinRTStreamSink::PlaceMarker(MFSTREAMSINK_MARKER_TYPE eMarkerTy
 	ms_message("MSWinRTStreamSink::PlaceMarker");
 	_mutex.lock();
 	HRESULT hr = S_OK;
-#if 0 // TODO
 	ComPtr<IMarker> spMarker;
 
 	hr = CheckShutdown();
 	if (SUCCEEDED(hr))
 		hr = ValidateOperation(OpPlaceMarker);
 	if (SUCCEEDED(hr))
-		hr = CreateMarker(eMarkerType, pvarMarkerValue, pvarContextValue, &spMarker);
+		hr = MSWinRTMarker::Create(eMarkerType, pvarMarkerValue, pvarContextValue, &spMarker);
 	if (SUCCEEDED(hr))
 		hr = _SampleQueue.InsertBack(spMarker.Get());
 
@@ -368,7 +463,6 @@ IFACEMETHODIMP MSWinRTStreamSink::PlaceMarker(MFSTREAMSINK_MARKER_TYPE eMarkerTy
 			hr = QueueAsyncOperation(OpPlaceMarker); // Increments ref count on pOp.
 		}
 	}
-#endif
 	_mutex.unlock();
 	RETURN_HR(hr)
 }
@@ -856,12 +950,41 @@ bool MSWinRTStreamSink::ProcessSamplesFromQueue(bool fFlush)
 					fSendSamples = false;
 				}
 			}
+		} else {
+			ComPtr<IMarker> spMarker;
+			// Check if it is a marker
+			if (SUCCEEDED(spunkSample.As(&spMarker))) {
+				MFSTREAMSINK_MARKER_TYPE markerType;
+				PROPVARIANT var;
+				HRESULT hr;
+				PropVariantInit(&var);
+				hr = spMarker->GetMarkerType(&markerType);
+				if (FAILED(hr)) throw ref new Exception(hr);
+				// Get the context data.
+				hr = spMarker->GetContext(&var);
+				if (FAILED(hr)) throw ref new Exception(hr);
+				hr = QueueEvent(MEStreamSinkMarker, GUID_NULL, S_OK, &var);
+				PropVariantClear(&var);
+				if (FAILED(hr)) throw ref new Exception(hr);
+
+				if (markerType == MFSTREAMSINK_MARKER_ENDOFSEGMENT) {
+					fSendEOS = true;
+				}
+			}
+#if 0 // TODO
+			else {
+				ComPtr<IMFMediaType> spType;
+				HRESULT hr = spunkSample.As(&spType);
+				if (FAILED(hr)) throw ref new Exception(hr);
+				if (!fFlush) {
+					spPacket = PrepareFormatChange(spType.Get());
+				}
+			}
+#endif
 		}
 
-		if (fSendSamples)
-		{
-			if (FAILED(_SampleQueue.RemoveFront(spunkSample.ReleaseAndGetAddressOf())))
-			{
+		if (fSendSamples) {
+			if (FAILED(_SampleQueue.RemoveFront(spunkSample.ReleaseAndGetAddressOf()))) {
 				fNeedMoreSamples = true;
 				fSendSamples = false;
 			}

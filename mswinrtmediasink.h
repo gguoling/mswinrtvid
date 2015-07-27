@@ -31,9 +31,16 @@ using namespace Windows::Media::MediaProperties;
 
 
 namespace libmswinrtvid {
-	//interface class ISinkCallback;
 	class MSWinRTCap;
 	class MSWinRTMediaSink;
+
+
+	interface DECLSPEC_UUID("3AC82233-933C-43a9-AF3D-ADC94EABF406") DECLSPEC_NOVTABLE IMarker : public IUnknown
+	{
+		IFACEMETHOD(GetMarkerType) (MFSTREAMSINK_MARKER_TYPE *pType) = 0;
+	IFACEMETHOD(GetMarkerValue) (PROPVARIANT *pvar) = 0;
+	IFACEMETHOD(GetContext) (PROPVARIANT *pvar) = 0;
+	};
 
 
 	template<class T>
@@ -93,6 +100,33 @@ namespace libmswinrtvid {
 
 		T *m_pParent;
 		InvokeFn m_pInvokeFn;
+	};
+
+
+	class MSWinRTMarker : public IMarker
+	{
+	public:
+		static HRESULT Create(MFSTREAMSINK_MARKER_TYPE eMarkerType, const PROPVARIANT *pvarMarkerValue, const PROPVARIANT *pvarContextValue, IMarker **ppMarker);
+
+		// IUnknown methods.
+		IFACEMETHOD(QueryInterface) (REFIID riid, void **ppv);
+		IFACEMETHOD_(ULONG, AddRef) ();
+		IFACEMETHOD_(ULONG, Release) ();
+
+		IFACEMETHOD(GetMarkerType) (MFSTREAMSINK_MARKER_TYPE *pType);
+		IFACEMETHOD(GetMarkerValue) (PROPVARIANT *pvar);
+		IFACEMETHOD(GetContext) (PROPVARIANT *pvar);
+
+	protected:
+		MFSTREAMSINK_MARKER_TYPE _eMarkerType;
+		PROPVARIANT _varMarkerValue;
+		PROPVARIANT _varContextValue;
+
+	private:
+		long    _cRef;
+
+		MSWinRTMarker(MFSTREAMSINK_MARKER_TYPE eMarkerType);
+		virtual ~MSWinRTMarker();
 	};
 
 
