@@ -188,6 +188,7 @@ MSWinRTStreamSink::MSWinRTStreamSink(DWORD dwIdentifier)
 #pragma warning(pop)
 {
 	ZeroMemory(&_guiCurrentSubtype, sizeof(_guiCurrentSubtype));
+	_guiCurrentFrameSize = 0;
 	ms_message("MSWinRTStreamSink constructor");
 }
 
@@ -258,10 +259,9 @@ IFACEMETHODIMP MSWinRTStreamSink::QueryInterface(REFIID riid, void **ppv)
 
 	if (FAILED(hr) && riid == IID_IMarshal) {
 		if (_spFTM == nullptr) {
-			_mutex.lock();
+			AutoLock lock(_critSec);
 			if (_spFTM == nullptr)
 				hr = CoCreateFreeThreadedMarshaler(static_cast<IMFStreamSink*>(this), &_spFTM);
-			_mutex.unlock();
 		}
 		if (SUCCEEDED(hr)) {
 			if (_spFTM == nullptr)
@@ -297,11 +297,10 @@ IFACEMETHODIMP MSWinRTStreamSink::BeginGetEvent(IMFAsyncCallback *pCallback, IUn
 {
 	ms_message("MSWinRTStreamSink::BeginGetEvent");
 	HRESULT hr = S_OK;
-	_mutex.lock();
+	AutoLock lock(_critSec);
 	hr = CheckShutdown();
 	if (SUCCEEDED(hr))
 		hr = _spEventQueue->BeginGetEvent(pCallback, punkState);
-	_mutex.unlock();
 	RETURN_HR(hr)
 }
 
@@ -309,11 +308,10 @@ IFACEMETHODIMP MSWinRTStreamSink::EndGetEvent(IMFAsyncResult *pResult, IMFMediaE
 {
 	ms_message("MSWinRTStreamSink::EndGetEvent");
 	HRESULT hr = S_OK;
-	_mutex.lock();
+	AutoLock lock(_critSec);
 	hr = CheckShutdown();
 	if (SUCCEEDED(hr))
 		hr = _spEventQueue->EndGetEvent(pResult, ppEvent);
-	_mutex.unlock();
 	RETURN_HR(hr)
 }
 
@@ -327,11 +325,12 @@ IFACEMETHODIMP MSWinRTStreamSink::GetEvent(DWORD dwFlags, IMFMediaEvent **ppEven
 	HRESULT hr = S_OK;
 	ComPtr<IMFMediaEventQueue> spQueue;
 
-	_mutex.lock();
-	hr = CheckShutdown();
-	if (SUCCEEDED(hr))
-		spQueue = _spEventQueue;
-	_mutex.unlock();
+	{
+		AutoLock lock(_critSec);
+		hr = CheckShutdown();
+		if (SUCCEEDED(hr))
+			spQueue = _spEventQueue;
+	}
 
 	if (SUCCEEDED(hr))
 		hr = spQueue->GetEvent(dwFlags, ppEvent);
@@ -342,11 +341,10 @@ IFACEMETHODIMP MSWinRTStreamSink::QueueEvent(MediaEventType met, REFGUID guidExt
 {
 	ms_message("MSWinRTStreamSink::QueueEvent");
 	HRESULT hr = S_OK;
-	_mutex.lock();
+	AutoLock lock(_critSec);
 	hr = CheckShutdown();
 	if (SUCCEEDED(hr))
 		hr = _spEventQueue->QueueEventParamVar(met, guidExtendedType, hrStatus, pvValue);
-	_mutex.unlock();
 	RETURN_HR(hr)
 }
 
@@ -358,11 +356,10 @@ IFACEMETHODIMP MSWinRTStreamSink::GetMediaSink(IMFMediaSink **ppMediaSink)
 	if (ppMediaSink == nullptr)
 		RETURN_HR(E_INVALIDARG)
 
-	_mutex.lock();
+	AutoLock lock(_critSec);
 	HRESULT hr = CheckShutdown();
 	if (SUCCEEDED(hr))
 		_spSink.Get()->QueryInterface(IID_IMFMediaSink, (void**)ppMediaSink);
-	_mutex.unlock();
 	RETURN_HR(hr)
 }
 
@@ -372,13 +369,12 @@ IFACEMETHODIMP MSWinRTStreamSink::GetIdentifier(DWORD *pdwIdentifier)
 	if (pdwIdentifier == nullptr)
 		RETURN_HR(E_INVALIDARG)
 
-	_mutex.lock();
+	AutoLock lock(_critSec);
 	HRESULT hr = CheckShutdown();
 	if (SUCCEEDED(hr)) {
 		ms_message("\t-> %d", _dwIdentifier);
 		*pdwIdentifier = _dwIdentifier;
 	}
-	_mutex.unlock();
 	RETURN_HR(hr)
 }
 
@@ -388,12 +384,11 @@ IFACEMETHODIMP MSWinRTStreamSink::GetMediaTypeHandler(IMFMediaTypeHandler **ppHa
 	if (ppHandler == nullptr)
 		RETURN_HR(E_INVALIDARG)
 
-	_mutex.lock();
+	AutoLock lock(_critSec);
 	HRESULT hr = CheckShutdown();
 	// This stream object acts as its own type handler, so we QI ourselves.
 	if (SUCCEEDED(hr))
 		hr = QueryInterface(IID_IMFMediaTypeHandler, (void**)ppHandler);
-	_mutex.unlock();
 	RETURN_HR(hr)
 }
 
@@ -405,7 +400,7 @@ IFACEMETHODIMP MSWinRTStreamSink::ProcessSample(IMFSample *pSample)
 		RETURN_HR(E_INVALIDARG)
 
 	HRESULT hr = S_OK;
-	_mutex.lock();
+	AutoLock lock(_critSec);
 	hr = CheckShutdown();
 	// Validate the operation.
 	if (SUCCEEDED(hr))
@@ -429,7 +424,6 @@ IFACEMETHODIMP MSWinRTStreamSink::ProcessSample(IMFSample *pSample)
 		}
 	}
 
-	_mutex.unlock();
 	RETURN_HR(hr)
 }
 
@@ -444,10 +438,10 @@ IFACEMETHODIMP MSWinRTStreamSink::ProcessSample(IMFSample *pSample)
 IFACEMETHODIMP MSWinRTStreamSink::PlaceMarker(MFSTREAMSINK_MARKER_TYPE eMarkerType, const PROPVARIANT *pvarMarkerValue, const PROPVARIANT *pvarContextValue)
 {
 	ms_message("MSWinRTStreamSink::PlaceMarker");
-	_mutex.lock();
 	HRESULT hr = S_OK;
 	ComPtr<IMarker> spMarker;
 
+	AutoLock lock(_critSec);
 	hr = CheckShutdown();
 	if (SUCCEEDED(hr))
 		hr = ValidateOperation(OpPlaceMarker);
@@ -463,7 +457,6 @@ IFACEMETHODIMP MSWinRTStreamSink::PlaceMarker(MFSTREAMSINK_MARKER_TYPE eMarkerTy
 			hr = QueueAsyncOperation(OpPlaceMarker); // Increments ref count on pOp.
 		}
 	}
-	_mutex.unlock();
 	RETURN_HR(hr)
 }
 
@@ -471,12 +464,11 @@ IFACEMETHODIMP MSWinRTStreamSink::PlaceMarker(MFSTREAMSINK_MARKER_TYPE eMarkerTy
 IFACEMETHODIMP MSWinRTStreamSink::Flush()
 {
 	ms_message("MSWinRTStreamSink::Flush");
-	_mutex.lock();
 	HRESULT hr = S_OK;
+	AutoLock lock(_critSec);
 	try {
 		hr = CheckShutdown();
 		if (FAILED(hr)) {
-			_mutex.unlock();
 			throw ref new Exception(hr);
 		}
 
@@ -487,7 +479,6 @@ IFACEMETHODIMP MSWinRTStreamSink::Flush()
 		hr = exc->HResult;
 	}
 
-	_mutex.unlock();
 	RETURN_HR(hr)
 }
 
@@ -501,9 +492,9 @@ IFACEMETHODIMP MSWinRTStreamSink::IsMediaTypeSupported(/* [in] */ IMFMediaType *
 	if (pMediaType == nullptr)
 		RETURN_HR(E_INVALIDARG)
 
-	_mutex.lock();
 	GUID majorType = GUID_NULL;
 	UINT cbSize = 0;
+	AutoLock lock(_critSec);
 	HRESULT hr = CheckShutdown();
 	if (SUCCEEDED(hr))
 		hr = pMediaType->GetGUID(MF_MT_MAJOR_TYPE, &majorType);
@@ -521,15 +512,16 @@ IFACEMETHODIMP MSWinRTStreamSink::IsMediaTypeSupported(/* [in] */ IMFMediaType *
 	}
 	if (SUCCEEDED(hr)) {
 		UINT64 frameSize = 0;
-		pMediaType->GetUINT64(MF_MT_FRAME_SIZE, &frameSize);
-		ms_message("MSWinRTStreamSink::IsMediaTypeSupported: %dx%d", (frameSize & 0xffffffff00000000) >> 32, frameSize & 0xffffffff);
+		if (FAILED(pMediaType->GetUINT64(MF_MT_FRAME_SIZE, &frameSize)) || frameSize != _guiCurrentFrameSize)
+			hr = MF_E_INVALIDMEDIATYPE;
+		else
+			ms_message("MSWinRTStreamSink::IsMediaTypeSupported: %dx%d", (frameSize & 0xffffffff00000000) >> 32, frameSize & 0xffffffff);
 	}
 
 	// We don't return any "close match" types.
 	if (ppMediaType)
 		*ppMediaType = nullptr;
 
-	_mutex.unlock();
 	RETURN_HR(hr)
 }
 
@@ -541,14 +533,13 @@ IFACEMETHODIMP MSWinRTStreamSink::GetMediaTypeCount(DWORD *pdwTypeCount)
 	if (pdwTypeCount == nullptr)
 		RETURN_HR(E_INVALIDARG)
 
-	_mutex.lock();
+	AutoLock lock(_critSec);
 	HRESULT hr = CheckShutdown();
 	if (SUCCEEDED(hr)) {
 		// We've got only one media type
 		*pdwTypeCount = 1;
 	}
 
-	_mutex.unlock();
 	RETURN_HR(hr)
 }
 
@@ -560,7 +551,7 @@ IFACEMETHODIMP MSWinRTStreamSink::GetMediaTypeByIndex(/* [in] */ DWORD dwIndex, 
 	if (ppType == nullptr)
 		RETURN_HR(E_INVALIDARG)
 
-	_mutex.lock();
+	AutoLock lock(_critSec);
 	HRESULT hr = CheckShutdown();
 	if (dwIndex > 0)
 		hr = MF_E_NO_MORE_TYPES;
@@ -570,7 +561,6 @@ IFACEMETHODIMP MSWinRTStreamSink::GetMediaTypeByIndex(/* [in] */ DWORD dwIndex, 
 			(*ppType)->AddRef();
 	}
 
-	_mutex.unlock();
 	RETURN_HR(hr)
 }
 
@@ -584,17 +574,15 @@ IFACEMETHODIMP MSWinRTStreamSink::SetCurrentMediaType(IMFMediaType *pMediaType)
 		if (pMediaType == nullptr)
 			throw ref new Exception(E_INVALIDARG);
 
-		_mutex.lock();
+		AutoLock lock(_critSec);
 		hr = CheckShutdown();
 		if (FAILED(hr)) {
-			_mutex.unlock();
 			throw ref new Exception(hr);
 		}
 
 		// We don't allow format changes after streaming starts.
 		hr = ValidateOperation(OpSetMediaType);
 		if (FAILED(hr)) {
-			_mutex.unlock();
 			throw ref new Exception(hr);
 		}
 
@@ -602,24 +590,24 @@ IFACEMETHODIMP MSWinRTStreamSink::SetCurrentMediaType(IMFMediaType *pMediaType)
 		if (_state >= State_Ready) {
 			hr = IsMediaTypeSupported(pMediaType, nullptr);
 			if (FAILED(hr)) {
-				_mutex.unlock();
 				throw ref new Exception(hr);
 			}
 		}
 
 		hr = MFCreateMediaType(_spCurrentType.ReleaseAndGetAddressOf());
 		if (FAILED(hr)) {
-			_mutex.unlock();
 			throw ref new Exception(hr);
 		}
 		hr = pMediaType->CopyAllItems(_spCurrentType.Get());
 		if (FAILED(hr)) {
-			_mutex.unlock();
 			throw ref new Exception(hr);
 		}
 		hr = _spCurrentType->GetGUID(MF_MT_SUBTYPE, &_guiCurrentSubtype);
 		if (FAILED(hr)) {
-			_mutex.unlock();
+			throw ref new Exception(hr);
+		}
+		hr = _spCurrentType->GetUINT64(MF_MT_FRAME_SIZE, &_guiCurrentFrameSize);
+		if (FAILED(hr)) {
 			throw ref new Exception(hr);
 		}
 		if (_state < State_Ready)
@@ -628,12 +616,10 @@ IFACEMETHODIMP MSWinRTStreamSink::SetCurrentMediaType(IMFMediaType *pMediaType)
 			ComPtr<IMFMediaType> spType;
 			hr = MFCreateMediaType(&spType);
 			if (FAILED(hr)) {
-				_mutex.unlock();
 				throw ref new Exception(hr);
 			}
 			hr = pMediaType->CopyAllItems(spType.Get());
 			if (FAILED(hr)) {
-				_mutex.unlock();
 				throw ref new Exception(hr);
 			}
 			ProcessFormatChange(spType.Get());
@@ -642,7 +628,6 @@ IFACEMETHODIMP MSWinRTStreamSink::SetCurrentMediaType(IMFMediaType *pMediaType)
 		hr = exc->HResult;
 	}
 
-	_mutex.unlock();
 	RETURN_HR(hr)
 }
 
@@ -653,7 +638,7 @@ IFACEMETHODIMP MSWinRTStreamSink::GetCurrentMediaType(IMFMediaType **ppMediaType
 	if (ppMediaType == nullptr)
 		RETURN_HR(E_INVALIDARG)
 
-	_mutex.lock();
+	AutoLock lock(_critSec);
 	HRESULT hr = CheckShutdown();
 	if (SUCCEEDED(hr)) {
 		if (_spCurrentType == nullptr)
@@ -664,7 +649,6 @@ IFACEMETHODIMP MSWinRTStreamSink::GetCurrentMediaType(IMFMediaType **ppMediaType
 		(*ppMediaType)->AddRef();
 	}
 
-	_mutex.unlock();
 	RETURN_HR(hr)
 }
 
@@ -708,7 +692,7 @@ HRESULT MSWinRTStreamSink::Initialize(MSWinRTMediaSink *pParent)
 HRESULT MSWinRTStreamSink::Start(MFTIME start)
 {
 	ms_message("MSWinRTStreamSink::Start");
-	_mutex.lock();
+	AutoLock lock(_critSec);
 	HRESULT hr = ValidateOperation(OpStart);
 	if (SUCCEEDED(hr)) {
 		if (start != PRESENTATION_CURRENT_POSITION) {
@@ -721,7 +705,6 @@ HRESULT MSWinRTStreamSink::Start(MFTIME start)
 		_fWaitingForFirstSample = true;
 		hr = QueueAsyncOperation(OpStart);
 	}
-	_mutex.unlock();
 	RETURN_HR(hr)
 }
 
@@ -729,13 +712,12 @@ HRESULT MSWinRTStreamSink::Start(MFTIME start)
 HRESULT MSWinRTStreamSink::Stop()
 {
 	ms_message("MSWinRTStreamSink::Stop");
-	_mutex.lock();
+	AutoLock lock(_critSec);
 	HRESULT hr = ValidateOperation(OpStop);
 	if (SUCCEEDED(hr)) {
 		_state = State_Stopped;
 		hr = QueueAsyncOperation(OpStop);
 	}
-	_mutex.unlock();
 	RETURN_HR(hr)
 }
 
@@ -743,13 +725,12 @@ HRESULT MSWinRTStreamSink::Stop()
 HRESULT MSWinRTStreamSink::Restart()
 {
 	ms_message("MSWinRTStreamSink::Restart");
-	_mutex.lock();
+	AutoLock lock(_critSec);
 	HRESULT hr = ValidateOperation(OpRestart);
 	if (SUCCEEDED(hr)) {
 		_state = State_Started;
 		hr = QueueAsyncOperation(OpRestart);
 	}
-	_mutex.unlock();
 	RETURN_HR(hr)
 }
 
@@ -787,7 +768,7 @@ HRESULT MSWinRTStreamSink::ValidateOperation(StreamOperation op)
 HRESULT MSWinRTStreamSink::Shutdown()
 {
 	ms_message("MSWinRTStreamSink::Shutdown");
-	_mutex.lock();
+	AutoLock lock(_critSec);
 	if (!_IsShutdown) {
 		if (_spEventQueue)
 			_spEventQueue->Shutdown();
@@ -800,7 +781,6 @@ HRESULT MSWinRTStreamSink::Shutdown()
 		_spCurrentType.Reset();
 		_IsShutdown = true;
 	}
-	_mutex.unlock();
 	return S_OK;
 }
 
@@ -822,13 +802,12 @@ HRESULT MSWinRTStreamSink::OnDispatchWorkItem(IMFAsyncResult *pAsyncResult)
 {
 	ms_message("MSWinRTStreamSink::OnDispatchWorkItem");
 	// Called by work queue thread. Need to hold the critical section.
-	_mutex.lock();
+	AutoLock lock(_critSec);
 
 	try {
 		ComPtr<IUnknown> spState;
 		HRESULT hr = pAsyncResult->GetState(&spState);
 		if (FAILED(hr)) {
-			_mutex.unlock();
 			throw ref new Exception(hr);
 		}
 
@@ -843,7 +822,6 @@ HRESULT MSWinRTStreamSink::OnDispatchWorkItem(IMFAsyncResult *pAsyncResult)
 			// Send MEStreamSinkStarted.
 			hr = QueueEvent(MEStreamSinkStarted, GUID_NULL, S_OK, nullptr);
 			if (FAILED(hr)) {
-				_mutex.unlock();
 				throw ref new Exception(hr);
 			}
 
@@ -853,7 +831,6 @@ HRESULT MSWinRTStreamSink::OnDispatchWorkItem(IMFAsyncResult *pAsyncResult)
 				// If false there is no samples in the queue now so request one
 				hr = QueueEvent(MEStreamSinkRequestSample, GUID_NULL, S_OK, nullptr);
 				if (FAILED(hr)) {
-					_mutex.unlock();
 					throw ref new Exception(hr);
 				}
 			}
@@ -866,7 +843,6 @@ HRESULT MSWinRTStreamSink::OnDispatchWorkItem(IMFAsyncResult *pAsyncResult)
 			// Send the event even if the previous call failed.
 			hr = QueueEvent(MEStreamSinkStopped, GUID_NULL, S_OK, nullptr);
 			if (FAILED(hr)) {
-				_mutex.unlock();
 				throw ref new Exception(hr);
 			}
 			break;
@@ -874,7 +850,6 @@ HRESULT MSWinRTStreamSink::OnDispatchWorkItem(IMFAsyncResult *pAsyncResult)
 		case OpPause:
 			hr = QueueEvent(MEStreamSinkPaused, GUID_NULL, S_OK, nullptr);
 			if (FAILED(hr)) {
-				_mutex.unlock();
 				throw ref new Exception(hr);
 			}
 			break;
@@ -889,7 +864,6 @@ HRESULT MSWinRTStreamSink::OnDispatchWorkItem(IMFAsyncResult *pAsyncResult)
 		HandleError(exc->HResult);
 	}
 
-	_mutex.unlock();
 	return S_OK;
 }
 
@@ -1125,13 +1099,12 @@ IFACEMETHODIMP MSWinRTMediaSink::GetCharacteristics(DWORD *pdwCharacteristics)
 	if (pdwCharacteristics == NULL)
 		RETURN_HR(E_INVALIDARG)
 
-	_mutex.lock();
+	AutoLock lock(_critSec);
 	HRESULT hr = CheckShutdown();
 	if (SUCCEEDED(hr)) {
 		// Rateless sink with fixed number of streams (1).
 		*pdwCharacteristics = MEDIASINK_RATELESS | MEDIASINK_FIXED_STREAMS;
 	}
-	_mutex.unlock();
 	RETURN_HR(hr)
 }
 
@@ -1153,12 +1126,11 @@ IFACEMETHODIMP MSWinRTMediaSink::GetStreamSinkCount(_Out_ DWORD *pcStreamSinkCou
 	if (pcStreamSinkCount == NULL)
 		RETURN_HR(E_INVALIDARG)
 
-	_mutex.lock();
+	AutoLock lock(_critSec);
 	HRESULT hr = CheckShutdown();
 	if (SUCCEEDED(hr))
 		*pcStreamSinkCount = 1;
 
-	_mutex.unlock();
 	RETURN_HR(hr)
 }
 
@@ -1169,8 +1141,8 @@ IFACEMETHODIMP MSWinRTMediaSink::GetStreamSinkByIndex(DWORD dwIndex, _Outptr_ IM
 		RETURN_HR(E_INVALIDARG)
 
 	ComPtr<IMFStreamSink> spStream;
-	_mutex.lock();
 
+	AutoLock lock(_critSec);
 	if (dwIndex >= 1)
 		return MF_E_INVALIDINDEX;
 
@@ -1180,7 +1152,6 @@ IFACEMETHODIMP MSWinRTMediaSink::GetStreamSinkByIndex(DWORD dwIndex, _Outptr_ IM
 		(*ppStreamSink)->AddRef();
 	}
 
-	_mutex.unlock();
 	RETURN_HR(hr)
 }
 
@@ -1190,7 +1161,7 @@ IFACEMETHODIMP MSWinRTMediaSink::GetStreamSinkById(DWORD dwStreamSinkIdentifier,
 	if (ppStreamSink == NULL)
 		RETURN_HR(E_INVALIDARG)
 
-	_mutex.lock();
+	AutoLock lock(_critSec);
 	HRESULT hr = CheckShutdown();
 	ComPtr<IMFStreamSink> spResult;
 	if (SUCCEEDED(hr)) {
@@ -1209,14 +1180,13 @@ IFACEMETHODIMP MSWinRTMediaSink::GetStreamSinkById(DWORD dwStreamSinkIdentifier,
 		}
 	}
 
-	_mutex.unlock();
 	RETURN_HR(hr)
 }
 
 IFACEMETHODIMP MSWinRTMediaSink::SetPresentationClock(IMFPresentationClock *pPresentationClock)
 {
 	ms_message("MSWinRTMediaSink::SetPresentationClock");
-	_mutex.lock();
+	AutoLock lock(_critSec);
 	HRESULT hr = CheckShutdown();
 
 	// If we already have a clock, remove ourselves from that clock's
@@ -1238,7 +1208,6 @@ IFACEMETHODIMP MSWinRTMediaSink::SetPresentationClock(IMFPresentationClock *pPre
 		_spClock = pPresentationClock;
 	}
 
-	_mutex.unlock();
 	RETURN_HR(hr)
 }
 
@@ -1248,7 +1217,7 @@ IFACEMETHODIMP MSWinRTMediaSink::GetPresentationClock(IMFPresentationClock **ppP
 	if (ppPresentationClock == NULL)
 		RETURN_HR(E_INVALIDARG)
 
-	_mutex.lock();
+	AutoLock lock(_critSec);
 	HRESULT hr = CheckShutdown();
 	if (SUCCEEDED(hr)) {
 		if (_spClock == NULL)
@@ -1260,21 +1229,19 @@ IFACEMETHODIMP MSWinRTMediaSink::GetPresentationClock(IMFPresentationClock **ppP
 		}
 	}
 
-	_mutex.unlock();
 	RETURN_HR(hr)
 }
 
 IFACEMETHODIMP MSWinRTMediaSink::Shutdown()
 {
 	ms_message("MSWinRTMediaSink::Shutdown");
-	_mutex.lock();
+	AutoLock lock(_critSec);
 	HRESULT hr = CheckShutdown();
 	if (SUCCEEDED(hr)) {
 		static_cast<MSWinRTStreamSink *>(_stream.Get())->Shutdown();
 		_spClock.Reset();
 		_IsShutdown = true;
 	}
-	_mutex.unlock();
 	return S_OK;
 }
 
@@ -1282,7 +1249,7 @@ IFACEMETHODIMP MSWinRTMediaSink::Shutdown()
 IFACEMETHODIMP MSWinRTMediaSink::OnClockStart(MFTIME hnsSystemTime, LONGLONG llClockStartOffset)
 {
 	ms_message("MSWinRTMediaSink::OnClockStart");
-	_mutex.lock();
+	AutoLock lock(_critSec);
 	HRESULT hr = CheckShutdown();
 	if (SUCCEEDED(hr)) {
 		ms_message("MSWinRTMediaSink::OnClockStart ts=%I64d\n", llClockStartOffset);
@@ -1290,20 +1257,18 @@ IFACEMETHODIMP MSWinRTMediaSink::OnClockStart(MFTIME hnsSystemTime, LONGLONG llC
 		hr = static_cast<MSWinRTStreamSink *>(_stream.Get())->Start(llClockStartOffset);
 	}
 
-	_mutex.unlock();
 	RETURN_HR(hr)
 }
 
 IFACEMETHODIMP MSWinRTMediaSink::OnClockStop(MFTIME hnsSystemTime)
 {
 	ms_message("MSWinRTMediaSink::OnClockStop");
-	_mutex.lock();
+	AutoLock lock(_critSec);
 	HRESULT hr = CheckShutdown();
 	if (SUCCEEDED(hr)) {
 		hr = static_cast<MSWinRTStreamSink *>(_stream.Get())->Stop();
 	}
 
-	_mutex.unlock();
 	RETURN_HR(hr)
 }
 
@@ -1329,9 +1294,8 @@ IFACEMETHODIMP MSWinRTMediaSink::OnClockSetRate(/* [in] */ MFTIME hnsSystemTime,
 void MSWinRTMediaSink::ReportEndOfStream()
 {
 	ms_message("MSWinRTMediaSink::ReportEndOfStream");
-	_mutex.lock();
+	AutoLock lock(_critSec);
 	++_cStreamsEnded;
-	_mutex.unlock();
 }
 
 void MSWinRTMediaSink::OnSampleAvailable(BYTE *buf, DWORD bufLen, LONGLONG presentationTime)

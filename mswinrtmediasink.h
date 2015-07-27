@@ -35,6 +35,52 @@ namespace libmswinrtvid {
 	class MSWinRTMediaSink;
 
 
+	class CritSec
+	{
+	public:
+		CRITICAL_SECTION m_criticalSection;
+
+		CritSec()
+		{
+			InitializeCriticalSectionEx(&m_criticalSection, 100, 0);
+		}
+
+		~CritSec()
+		{
+			DeleteCriticalSection(&m_criticalSection);
+		}
+
+		_Acquires_lock_(m_criticalSection) void Lock()
+		{
+			EnterCriticalSection(&m_criticalSection);
+		}
+
+		_Releases_lock_(m_criticalSection) void Unlock()
+		{
+			LeaveCriticalSection(&m_criticalSection);
+		}
+	};
+
+
+	class AutoLock
+	{
+	public:
+		_Acquires_lock_(m_pCriticalSection) AutoLock(CritSec& crit)
+		{
+			m_pCriticalSection = &crit;
+			m_pCriticalSection->Lock();
+		}
+
+		_Releases_lock_(m_pCriticalSection) ~AutoLock()
+		{
+			m_pCriticalSection->Unlock();
+		}
+
+	private:
+		CritSec *m_pCriticalSection;
+	};
+
+
 	interface DECLSPEC_UUID("3AC82233-933C-43a9-AF3D-ADC94EABF406") DECLSPEC_NOVTABLE IMarker : public IUnknown
 	{
 		IFACEMETHOD(GetMarkerType) (MFSTREAMSINK_MARKER_TYPE *pType) = 0;
@@ -243,9 +289,8 @@ namespace libmswinrtvid {
 		void        HandleError(HRESULT hr);
 
 	private:
-		std::recursive_mutex _mutex;
-
 		long                        _cRef;                      // reference count
+		CritSec                     _critSec;                   // critical section for thread safety
 
 		DWORD                       _dwIdentifier;
 		State                       _state;
@@ -254,6 +299,7 @@ namespace libmswinrtvid {
 		bool                        _fWaitingForFirstSample;
 		bool                        _fFirstSampleAfterConnect;
 		GUID                        _guiCurrentSubtype;
+		UINT64						_guiCurrentFrameSize;
 
 		DWORD                       _WorkQueueId;               // ID of the work queue for asynchronous operations.
 		MFTIME                      _StartTime;                 // Presentation time when the clock started.
@@ -315,10 +361,7 @@ namespace libmswinrtvid {
 		LONGLONG GetStartTime() const { return _llStartTime; }
 
 		void ReportEndOfStream();
-		void SetCaptureFilter(MSWinRTCap *capture) {
-			_capture = capture;
-			if (capture == NULL) _stream.Get()->Release();
-		}
+		void SetCaptureFilter(MSWinRTCap *capture) { _capture = capture; }
 		void OnSampleAvailable(BYTE *buf, DWORD bufLen, LONGLONG presentationTime);
 
 	private:
@@ -334,11 +377,11 @@ namespace libmswinrtvid {
 		}
 
 	private:
-		std::recursive_mutex _mutex;
 		ComPtr<IMFStreamSink> _stream;
 		MSWinRTCap *_capture;
 
 		long                            _cRef;                      // reference count
+		CritSec							_critSec;                   // critical section for thread safety
 
 		bool                            _IsShutdown;                // Flag to indicate if Shutdown() method was called.
 		bool                            _IsConnected;
