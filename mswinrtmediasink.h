@@ -281,7 +281,10 @@ namespace libmswinrtvid {
 		LONGLONG GetStartTime() const { return _llStartTime; }
 
 		void ReportEndOfStream();
-		void SetCaptureFilter(MSWinRTCap *capture) { _capture = capture; }
+		void SetCaptureFilter(MSWinRTCap *capture) {
+			_capture = capture;
+			if (capture == NULL) _stream.Get()->Release();
+		}
 		void OnSampleAvailable(BYTE *buf, DWORD bufLen, LONGLONG presentationTime);
 
 	private:

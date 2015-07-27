@@ -180,14 +180,15 @@ IFACEMETHODIMP MSWinRTStreamSink::QueryInterface(REFIID riid, void **ppv)
 
 IFACEMETHODIMP_(ULONG) MSWinRTStreamSink::AddRef()
 {
-	ms_message("MSWinRTStreamSink::AddRef");
-	return InterlockedIncrement(&_cRef);
+	long cRef = InterlockedIncrement(&_cRef);
+	ms_message("MSWinRTStreamSink::AddRef -> %d", cRef);
+	return cRef;
 }
 
 IFACEMETHODIMP_(ULONG) MSWinRTStreamSink::Release()
 {
-	ms_message("MSWinRTStreamSink::Release");
 	long cRef = InterlockedDecrement(&_cRef);
+	ms_message("MSWinRTStreamSink::Release -> %d", cRef);
 	if (cRef == 0)
 		delete this;
 	return cRef;
@@ -385,11 +386,9 @@ IFACEMETHODIMP MSWinRTStreamSink::Flush()
 			throw ref new Exception(hr);
 		}
 
-#if 0 // TODO
 		// Note: Even though we are flushing data, we still need to send
 		// any marker events that were queued.
 		DropSamplesFromQueue();
-#endif
 	} catch (Exception ^exc) {
 		hr = exc->HResult;
 	}
@@ -425,6 +424,11 @@ IFACEMETHODIMP MSWinRTStreamSink::IsMediaTypeSupported(/* [in] */ IMFMediaType *
 		GUID guiNewSubtype;
 		if (FAILED(pMediaType->GetGUID(MF_MT_SUBTYPE, &guiNewSubtype)) || guiNewSubtype != _guiCurrentSubtype)
 			hr = MF_E_INVALIDMEDIATYPE;
+	}
+	if (SUCCEEDED(hr)) {
+		UINT64 frameSize = 0;
+		pMediaType->GetUINT64(MF_MT_FRAME_SIZE, &frameSize);
+		ms_message("MSWinRTStreamSink::IsMediaTypeSupported: %dx%d", (frameSize & 0xffffffff00000000) >> 32, frameSize & 0xffffffff);
 	}
 
 	// We don't return any "close match" types.
@@ -841,8 +845,6 @@ bool MSWinRTStreamSink::ProcessSamplesFromQueue(bool fFlush)
 
 	while (fSendSamples) {
 		ComPtr<IMFSample> spSample;
-		//ComPtr<IBufferPacket> spPacket;
-		bool fProcessingSample = false;
 
 		// Figure out if this is a marker or a sample.
 		// If this is a sample, write it to the file.
@@ -850,67 +852,11 @@ bool MSWinRTStreamSink::ProcessSamplesFromQueue(bool fFlush)
 		if (SUCCEEDED(spunkSample.As(&spSample))) {
 			if (!fFlush) {
 				// Prepare sample for sending
-				PrepareSample(spSample.Get());
-#if 0 // TODO
-				spPacket = PrepareSample(spSample.Get(), false);
-#endif
-				fProcessingSample = true;
+				if (FAILED(PrepareSample(spSample.Get()))) {
+					fSendSamples = false;
+				}
 			}
 		}
-#if 0
-		else {
-			ComPtr<IMarker> spMarker;
-			// Check if it is a marker
-			if (SUCCEEDED(spunkSample.As(&spMarker))) {
-				MFSTREAMSINK_MARKER_TYPE markerType;
-				PROPVARIANT var;
-				PropVariantInit(&var);
-				ThrowIfError(spMarker->GetMarkerType(&markerType));
-				// Get the context data.
-				ThrowIfError(spMarker->GetContext(&var));
-
-				HRESULT hr = QueueEvent(MEStreamSinkMarker, GUID_NULL, S_OK, &var);
-				PropVariantClear(&var);
-				if (FAILED(hr))
-					throw ref new Exception(hr);
-
-				if (markerType == MFSTREAMSINK_MARKER_ENDOFSEGMENT)
-					fSendEOS = true;
-			} else {
-				ComPtr<IMFMediaType> spType;
-				ThrowIfError(spunkSample.As(&spType));
-				if (!fFlush)
-					spPacket = PrepareFormatChange(spType.Get());
-			}
-		}
-#endif
-
-#if 0 // TODO
-		if (spPacket) {
-			ComPtr<MSWinRTStreamSink> spThis = this;
-			// Send the sample
-			concurrency::create_task(_networkSender->SendAsync(spPacket.Get())).then([this, spThis, fProcessingSample](concurrency::task<void>& sendTask)
-			{
-				AutoLock lock(_critSec);
-				try
-				{
-					sendTask.get();
-					ThrowIfError(CheckShutdown());
-					if (_state == State_Started && fProcessingSample)
-					{
-						// If we are still in started state request another sample
-						ThrowIfError(QueueEvent(MEStreamSinkRequestSample, GUID_NULL, S_OK, nullptr));
-					}
-				}
-				catch (Exception ^exc)
-				{
-					HandleError(exc->HResult);
-				}
-			});
-			// We stop if we processed a sample otherwise keep looking
-			fSendSamples = !fProcessingSample;
-		}
-#endif
 
 		if (fSendSamples)
 		{
@@ -920,7 +866,6 @@ bool MSWinRTStreamSink::ProcessSamplesFromQueue(bool fFlush)
 				fSendSamples = false;
 			}
 		}
-
 	}
 
 	if (fSendEOS)
@@ -1130,7 +1075,7 @@ IFACEMETHODIMP MSWinRTMediaSink::GetStreamSinkById(DWORD dwStreamSinkIdentifier,
 		hr = _stream->GetIdentifier(&dwId);
 		if (SUCCEEDED(hr)) {
 			if (dwId == dwStreamSinkIdentifier)
-				spResult = _stream;
+				spResult = _stream; // implicit AddRef
 			else
 				hr = MF_E_INVALIDSTREAMNUMBER;
 		} else {
@@ -1138,7 +1083,6 @@ IFACEMETHODIMP MSWinRTMediaSink::GetStreamSinkById(DWORD dwStreamSinkIdentifier,
 		}
 		if (SUCCEEDED(hr)) {
 			*ppStreamSink = spResult.Get();
-			(*ppStreamSink)->AddRef();
 		}
 	}
 

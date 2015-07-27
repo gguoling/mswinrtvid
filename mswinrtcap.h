@@ -92,6 +92,7 @@ namespace libmswinrtvid
 		HANDLE mStartCompleted;
 		HANDLE mStopCompleted;
 		HANDLE mPreviewStartCompleted;
+		HANDLE mPreviewStopCompleted;
 		Windows::UI::Xaml::Controls::CaptureElement^ mCaptureElement;
 		Platform::String^ mDeviceId;
 		Platform::Agile<MediaCapture^> mCapture;

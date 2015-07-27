@@ -70,6 +70,11 @@ MSWinRTCap::MSWinRTCap()
 		ms_error("[MSWinRTCap] Could not create stop event [%i]", GetLastError());
 		return;
 	}
+	mPreviewStopCompleted = CreateEventEx(NULL, L"Local\\MSWinRTCapPreviewStop", 0, EVENT_ALL_ACCESS);
+	if (!mPreviewStopCompleted) {
+		ms_error("[MSWinRTCap] Could not create preview stop event [%i]", GetLastError());
+		return;
+	}
 
 	mIsInitialized = true;
 	smInstantiated = true;
@@ -79,6 +84,10 @@ MSWinRTCap::~MSWinRTCap()
 {
 	stop();
 	deactivate();
+	if (mPreviewStopCompleted) {
+		CloseHandle(mPreviewStopCompleted);
+		mPreviewStopCompleted = NULL;
+	}
 	if (mStopCompleted) {
 		CloseHandle(mStopCompleted);
 		mStopCompleted = NULL;
@@ -144,6 +153,12 @@ int MSWinRTCap::activate()
 
 int MSWinRTCap::deactivate()
 {
+	IAsyncAction^ action = mCapture->StopPreviewAsync();
+	action->Completed = ref new AsyncActionCompletedHandler([this](IAsyncAction^ asyncAction, Windows::Foundation::AsyncStatus asyncStatus) {
+		SetEvent(mPreviewStopCompleted);
+	});
+	WaitForSingleObjectEx(mPreviewStopCompleted, INFINITE, FALSE);
+
 	mCameraSensorRotation = 0;
 	mIsActivated = false;
 	return 0;
@@ -186,6 +201,8 @@ void MSWinRTCap::start()
 		action->Completed = ref new AsyncActionCompletedHandler([this](IAsyncAction^ asyncAction, Windows::Foundation::AsyncStatus asyncStatus) {
 			if (asyncStatus == Windows::Foundation::AsyncStatus::Completed)
 				mIsStarted = true;
+			else
+				ms_error("[MSWinRTCap] StartRecordToCustomSinkAsync failed");
 			SetEvent(mStartCompleted);
 		});
 		WaitForSingleObjectEx(mStartCompleted, INFINITE, FALSE);
@@ -198,6 +215,13 @@ void MSWinRTCap::stop()
 
 	if (!mIsStarted) return;
 
+	static_cast<MSWinRTMediaSink *>(mMediaSink.Get())->SetCaptureFilter(NULL);
+	IAsyncAction^ action = mCapture->StopRecordAsync();
+	action->Completed = ref new AsyncActionCompletedHandler([this](IAsyncAction^ asyncAction, Windows::Foundation::AsyncStatus asyncStatus) {
+		SetEvent(mStopCompleted);
+	});
+	WaitForSingleObjectEx(mStopCompleted, INFINITE, FALSE);
+
 	ms_mutex_lock(&mMutex);
 	// Free samples that have already been sent
 	while ((m = ms_queue_get(&mSampleToFreeQueue)) != NULL) {
@@ -208,6 +232,7 @@ void MSWinRTCap::stop()
 		freemsg(m);
 	}
 	ms_mutex_unlock(&mMutex);
+	mIsStarted = false;
 }
 
 int MSWinRTCap::feed(MSFilter *f)
@@ -228,11 +253,6 @@ int MSWinRTCap::feed(MSFilter *f)
 	return 0;
 }
 
-
-static void freeSample(void *sample)
-{
-	delete[] sample;
-}
 
 void MSWinRTCap::OnSampleAvailable(BYTE *buf, DWORD bufLen, LONGLONG presentationTime)
 {
