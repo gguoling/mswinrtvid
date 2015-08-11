@@ -31,6 +31,8 @@ using namespace Windows::Media::Core;
 using namespace Windows::Media::MediaProperties;
 
 
+//#define MSWINRTDIS_DEBUG
+
 
 static void _startMediaElement(Windows::UI::Xaml::Controls::MediaElement^ mediaElement, Windows::Media::Core::MediaStreamSource^ mediaStreamSource)
 {
@@ -111,7 +113,7 @@ void MSWinRTDisSampleHandler::Feed(Windows::Storage::Streams::IBuffer^ pBuffer, 
 		mSampleRequestDeferral->Complete();
 		mSampleRequest = nullptr;
 		mSampleRequestDeferral = nullptr;
-#ifdef _DEBUG
+#ifdef MSWINRTDIS_DEBUG
 		ms_message("OnSampleReceived fill sample [queue: %d, lastFilterTime=%llu, lastPresentationTime=%llu]", mSampleQueue->Size, mLastFilterTime, mLastPresentationTime);
 	} else {
 		ms_message("OnSampleReceived queue sample [queue: %d]", mSampleQueue->Size);
@@ -131,11 +133,11 @@ void MSWinRTDisSampleHandler::OnSampleRequested(Windows::Media::Core::MediaStrea
 	mMutex.lock();
 	if (mSampleQueue->Size > 0) {
 		AnswerSampleRequest(request);
-#ifdef _DEBUG
+#ifdef MSWINRTDIS_DEBUG
 		ms_message("OnSampleRequested fill sample [queue: %d, lastFilterTime=%llu, lastPresentationTime=%llu]", mSampleQueue->Size, mLastFilterTime, mLastPresentationTime);
 #endif
 	} else {
-#ifdef _DEBUG
+#ifdef MSWINRTDIS_DEBUG
 		ms_message("OnSampleRequested wait for sample [queue: %d]", mSampleQueue->Size);
 #endif
 		mSampleRequestDeferral = request->GetDeferral();
