@@ -263,7 +263,7 @@ void MSWinRTCap::OnSampleAvailable(BYTE *buf, DWORD bufLen, LONGLONG presentatio
 
 	int w = mVideoSize.width;
 	int h = mVideoSize.height;
-	if ((mDeviceOrientation % 180) == 0) {
+	if ((mDeviceOrientation % 180) == 90) {
 		w = mVideoSize.height;
 		h = mVideoSize.width;
 	}
@@ -287,7 +287,7 @@ void MSWinRTCap::setFps(float fps)
 MSVideoSize MSWinRTCap::getVideoSize()
 {
 	MSVideoSize vs;
-	if ((mDeviceOrientation % 180) == 0) {
+	if ((mDeviceOrientation % 180) == 90) {
 		vs.width = mVideoSize.height;
 		vs.height = mVideoSize.width;
 	} else {
