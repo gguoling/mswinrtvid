@@ -72,9 +72,11 @@ namespace libmswinrtvid
 		void applyVideoSize();
 		bool selectBestVideoSize();
 		void configure();
-		static void addCamera(MSWebCamManager *manager, MSWebCamDesc *desc, Platform::String^ DeviceId, Platform::String^ DeviceName);
+		static void addCamera(MSWebCamManager *manager, MSWebCamDesc *desc, Windows::Devices::Enumeration::DeviceInformation^ DeviceInfo);
+		static void registerCameras(MSWebCamManager *manager);
 
 		static bool smInstantiated;
+		static MSList *smCameras;
 		bool mIsInitialized;
 		bool mIsActivated;
 		bool mIsStarted;

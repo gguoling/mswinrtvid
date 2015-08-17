@@ -31,6 +31,7 @@ using namespace libmswinrtvid;
 
 
 bool MSWinRTCap::smInstantiated = false;
+MSList *MSWinRTCap::smCameras = NULL;
 
 
 MSWinRTCap::MSWinRTCap()
@@ -332,28 +333,43 @@ void MSWinRTCap::configure()
 	mEncodingProfile->Video = VideoEncodingProperties::CreateUncompressed(MediaEncodingSubtypes::Nv12, mVideoSize.width, mVideoSize.height);
 }
 
-void MSWinRTCap::addCamera(MSWebCamManager *manager, MSWebCamDesc *desc, Platform::String^ DeviceId, Platform::String^ DeviceName)
+void MSWinRTCap::addCamera(MSWebCamManager *manager, MSWebCamDesc *desc, DeviceInformation^ DeviceInfo)
 {
 	size_t returnlen;
-	size_t inputlen = wcslen(DeviceName->Data()) + 1;
+	size_t inputlen = wcslen(DeviceInfo->Name->Data()) + 1;
 	char *name = (char *)ms_malloc(inputlen);
-	if (wcstombs_s(&returnlen, name, inputlen, DeviceName->Data(), inputlen) != 0) {
+	if (wcstombs_s(&returnlen, name, inputlen, DeviceInfo->Name->Data(), inputlen) != 0) {
 		ms_error("MSWinRTCap: Cannot convert webcam name to multi-byte string.");
 		goto error;
 	}
 
 	MSWebCam *cam = ms_web_cam_new(desc);
 	cam->name = ms_strdup(name);
-	const wchar_t *id = DeviceId->Data();
+	const wchar_t *id = DeviceInfo->Id->Data();
 	WinRTWebcam *winrtwebcam = new WinRTWebcam();
 	winrtwebcam->id_vector = new std::vector<wchar_t>(wcslen(id) + 1);
 	wcscpy_s(&winrtwebcam->id_vector->front(), winrtwebcam->id_vector->size(), id);
 	winrtwebcam->id = &winrtwebcam->id_vector->front();
 	cam->data = winrtwebcam;
-	ms_web_cam_manager_prepend_cam(manager, cam);
+	if (DeviceInfo->EnclosureLocation->Panel == Windows::Devices::Enumeration::Panel::Front) {
+		smCameras = ms_list_append(smCameras, cam);
+	} else {
+		smCameras = ms_list_prepend(smCameras, cam);
+	}
 
 error:
 	ms_free(name);
+}
+
+void MSWinRTCap::registerCameras(MSWebCamManager *manager)
+{
+	if (ms_list_size(smCameras) == 0) {
+		ms_warning("[MSWinRTCap] No camera detected!");
+	}
+	for (int i = 0; i < ms_list_size(smCameras); i++) {
+		ms_web_cam_manager_prepend_cam(manager, (MSWebCam *)ms_list_nth_data(smCameras, i));
+	}
+	ms_list_free(smCameras);
 }
 
 void MSWinRTCap::detectCameras(MSWebCamManager *manager, MSWebCamDesc *desc)
@@ -374,9 +390,9 @@ void MSWinRTCap::detectCameras(MSWebCamManager *manager, MSWebCamDesc *desc)
 			else {
 				try {
 					for (unsigned int i = 0; i < DeviceInfoCollection->Size; i++) {
-						DeviceInformation^ DeviceInfo = DeviceInfoCollection->GetAt(i);
-						addCamera(manager, desc, DeviceInfo->Id, DeviceInfo->Name);
+						addCamera(manager, desc, DeviceInfoCollection->GetAt(i));
 					}
+					registerCameras(manager);
 				}
 				catch (Platform::Exception^ e) {
 					ms_error("[MSWinRTCap] Error of webcam detection");
