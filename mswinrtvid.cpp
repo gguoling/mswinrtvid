@@ -78,7 +78,11 @@ static void ms_winrtcap_read_uninit(MSFilter *f) {
 
 static int ms_winrtcap_get_fps(MSFilter *f, void *arg) {
 	MSWinRTCap *r = static_cast<MSWinRTCap *>(f->data);
-	*((float *)arg) = r->getFps();
+	if (f->ticker) {
+		*((float *)arg) = r->getAverageFps();
+	} else {
+		*((float *)arg) = r->getFps();
+	}
 	return 0;
 }
 

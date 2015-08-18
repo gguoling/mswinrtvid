@@ -59,6 +59,7 @@ namespace libmswinrtvid
 		void setDeviceId(Platform::String^ id) { mDeviceId = id; };
 		MSPixFmt getPixFmt() { return MS_YUV420P; }
 		float getFps() { return mFps; }
+		float getAverageFps();
 		void setFps(float fps);
 		MSVideoSize getVideoSize();
 		void setVideoSize(MSVideoSize vs);
@@ -81,6 +82,7 @@ namespace libmswinrtvid
 		bool mIsActivated;
 		bool mIsStarted;
 		float mFps;
+		MSAverageFPS mAvgFps;
 		MSVideoSize mVideoSize;
 		MSQueue mSampleToSendQueue;
 		MSQueue mSampleToFreeQueue;

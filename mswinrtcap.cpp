@@ -118,6 +118,7 @@ int MSWinRTCap::activate()
 {
 	if (!mIsInitialized) return -1;
 
+	ms_average_fps_init(&mAvgFps, "[MSWinRTCap] fps=%f");
 	mCapture = ref new MediaCapture();
 	MediaCaptureInitializationSettings^ initSettings = ref new MediaCaptureInitializationSettings();
 	initSettings->MediaCategory = MediaCategory::Communications;
@@ -250,6 +251,7 @@ int MSWinRTCap::feed(MSFilter *f)
 	// Send queued samples
 	while ((im = ms_queue_get(&mSampleToSendQueue)) != NULL) {
 		ms_queue_put(f->outputs[0], im);
+		ms_average_fps_update(&mAvgFps, f->ticker->time);
 	}
 	ms_mutex_unlock(&mMutex);
 
@@ -283,6 +285,11 @@ void MSWinRTCap::setFps(float fps)
 {
 	mFps = fps;
 	applyFps();
+}
+
+float MSWinRTCap::getAverageFps()
+{
+	return ms_average_fps_get(&mAvgFps);
 }
 
 MSVideoSize MSWinRTCap::getVideoSize()
