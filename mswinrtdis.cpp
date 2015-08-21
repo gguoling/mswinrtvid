@@ -232,16 +232,21 @@ int MSWinRTDis::feed(MSFilter *f)
 	if (mIsStarted) {
 		mblk_t *im;
 
-		while ((im = ms_queue_get(f->inputs[0])) != NULL) {
+		if ((f->inputs[0] != NULL) && ((im = ms_queue_peek_last(f->inputs[0])) != NULL)) {
 			int size = 0;
 			MSPicture buf;
 			ms_yuv_buf_init_from_mblk(&buf, im);
 			if ((buf.w != mSampleHandler->Width) || (buf.h != mSampleHandler->Height)) {
+				//ms_error("GMA: MSWinRTDis size change: %dx%d", buf.w, buf.h);
 				mSampleHandler->Width = buf.w;
 				mSampleHandler->Height = buf.h;
 				mSampleHandler->RequestMediaElementRestart();
-				if (mBuffer) ms_free(mBuffer);
+				if (mBuffer) {
+					ms_free(mBuffer);
+					mBuffer = NULL;
+				}
 			}
+			//ms_error("GMA: buf=%dx%d", buf.w, buf.h);
 			size = (buf.w * buf.h * 3) / 2;
 			if (!mBuffer) mBuffer = (uint8_t *)ms_malloc(size);
 			int ysize = buf.w * buf.h;
@@ -249,19 +254,17 @@ int MSWinRTDis::feed(MSFilter *f)
 			memcpy(mBuffer, buf.planes[0], ysize);
 			memcpy(mBuffer + ysize, buf.planes[2], usize);
 			memcpy(mBuffer + ysize + usize, buf.planes[1], usize);
-			freemsg(im);
 			if (size > 0) {
 				ComPtr<VideoBuffer> spVideoBuffer = NULL;
 				MakeAndInitialize<VideoBuffer>(&spVideoBuffer, mBuffer, size);
 				mSampleHandler->Feed(VideoBuffer::GetIBuffer(spVideoBuffer), f->ticker->time);
 			}
 		}
-	} else {
-		if (f->inputs[0] != NULL) {
-			ms_queue_flush(f->inputs[0]);
-		}
 	}
 
+	if (f->inputs[0] != NULL) {
+		ms_queue_flush(f->inputs[0]);
+	}
 	if (f->inputs[1] != NULL) {
 		ms_queue_flush(f->inputs[1]);
 	}
