@@ -105,12 +105,9 @@ namespace libmswinrtvid
 	private:
 		void AnswerSampleRequest(Windows::Media::Core::MediaStreamSourceSampleRequest^ sampleRequest);
 
-		Platform::Collections::Vector<MSWinRTDisSample^>^ mSampleQueue;
-		Windows::Media::Core::MediaStreamSourceSampleRequest^ mSampleRequest;
-		Windows::Media::Core::MediaStreamSourceSampleRequestDeferral^ mSampleRequestDeferral;
+		MSWinRTDisSample^ mSample;
 		Windows::UI::Xaml::Controls::MediaElement^ mMediaElement;
-		UINT64 mLastPresentationTime;
-		UINT64 mLastFilterTime;
+		UINT64 mReferenceTime;
 		std::mutex mMutex;
 		MSPixFmt mPixFmt;
 		int mWidth;
