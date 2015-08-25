@@ -105,13 +105,13 @@ void MSWinRTDisSampleHandler::StopMediaElement()
 	mStarted = false;
 }
 
-void MSWinRTDisSampleHandler::Feed(Windows::Storage::Streams::IBuffer^ pBuffer, UINT64 filterTime)
+void MSWinRTDisSampleHandler::Feed(Windows::Storage::Streams::IBuffer^ pBuffer)
 {
 	mMutex.lock();
 	if (!mStarted) {
 		StartMediaElement();
 	}
-	mSample = ref new MSWinRTDisSample(pBuffer, filterTime);
+	mSample = pBuffer;
 	if (mDeferralQueue->Size > 0) {
 #ifdef MSWINRTDIS_DEBUG
 		ms_message("[MSWinRTDis] Feed answer deferral");
@@ -160,7 +160,7 @@ void MSWinRTDisSampleHandler::AnswerSampleRequest(Windows::Media::Core::MediaStr
 		mReferenceTime = CurrentTime;
 	}
 	ts.Duration = CurrentTime - mReferenceTime;
-	sampleRequest->Sample = MediaStreamSample::CreateFromBuffer(mSample->Buffer, ts);
+	sampleRequest->Sample = MediaStreamSample::CreateFromBuffer(mSample, ts);
 	mSample = nullptr;
 }
 
@@ -253,7 +253,7 @@ int MSWinRTDis::feed(MSFilter *f)
 				}
 				ComPtr<VideoBuffer> spVideoBuffer = NULL;
 				MakeAndInitialize<VideoBuffer>(&spVideoBuffer, mBuffer, size);
-				mSampleHandler->Feed(VideoBuffer::GetIBuffer(spVideoBuffer), f->ticker->time);
+				mSampleHandler->Feed(VideoBuffer::GetIBuffer(spVideoBuffer));
 			}
 		}
 	}
