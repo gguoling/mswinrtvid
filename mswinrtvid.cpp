@@ -78,7 +78,11 @@ static void ms_winrtcap_read_uninit(MSFilter *f) {
 
 static int ms_winrtcap_get_fps(MSFilter *f, void *arg) {
 	MSWinRTCap *r = static_cast<MSWinRTCap *>(f->data);
-	*((float *)arg) = r->getFps();
+	if (f->ticker) {
+		*((float *)arg) = r->getAverageFps();
+	} else {
+		*((float *)arg) = r->getFps();
+	}
 	return 0;
 }
 
@@ -109,15 +113,12 @@ static int ms_winrtcap_set_vsize(MSFilter *f, void *arg) {
 	return 0;
 }
 
-static int ms_winrtcap_get_camera_sensor_rotation(MSFilter *f, void *arg) {
-	MSWinRTCap *r = static_cast<MSWinRTCap *>(f->data);
-	*((int *)arg) = r->getCameraSensorRotation();
-	return 0;
-}
-
 static int ms_winrtcap_set_device_orientation(MSFilter *f, void *arg) {
 	MSWinRTCap *r = static_cast<MSWinRTCap *>(f->data);
-	r->setDeviceOrientation(*((int *)arg));
+	int orientation = *((int *)arg);
+	if (r->getDeviceOrientation() != orientation) {
+		r->setDeviceOrientation(orientation);
+	}
 	return 0;
 }
 
@@ -137,7 +138,6 @@ static MSFilterMethod ms_winrtcap_read_methods[] = {
 	{ MS_FILTER_GET_PIX_FMT,                       ms_winrtcap_get_pix_fmt                },
 	{ MS_FILTER_GET_VIDEO_SIZE,                    ms_winrtcap_get_vsize                  },
 	{ MS_FILTER_SET_VIDEO_SIZE,                    ms_winrtcap_set_vsize                  },
-	{ MS_VIDEO_CAPTURE_GET_CAMERA_SENSOR_ROTATION, ms_winrtcap_get_camera_sensor_rotation },
 	{ MS_VIDEO_CAPTURE_SET_DEVICE_ORIENTATION,     ms_winrtcap_set_device_orientation     },
 	{ MS_VIDEO_DISPLAY_SET_NATIVE_WINDOW_ID,       ms_winrtcap_set_native_window_id       },
 	{ 0,                                           NULL                                   }
@@ -189,6 +189,9 @@ static MSFilter *ms_winrtcap_create_reader(MSWebCam *cam) {
 	MSWinRTCap *r = static_cast<MSWinRTCap *>(f->data);
 	WinRTWebcam* winrtcam = static_cast<WinRTWebcam *>(cam->data);
 	r->setDeviceId(ref new Platform::String(winrtcam->id));
+	r->setFront(winrtcam->front == TRUE);
+	r->setExternal(winrtcam->external == TRUE);
+	r->initialize();
 	return f;
 }
 

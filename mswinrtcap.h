@@ -46,6 +46,7 @@ namespace libmswinrtvid
 		MSWinRTCap();
 		virtual ~MSWinRTCap();
 
+		void initialize();
 		int activate();
 		int deactivate();
 		bool isStarted() { return mIsStarted; }
@@ -55,14 +56,17 @@ namespace libmswinrtvid
 
 		void OnSampleAvailable(BYTE *buf, DWORD bufLen, LONGLONG presentationTime);
 
-		void setCaptureElement(Windows::UI::Xaml::Controls::CaptureElement^ captureElement) { mCaptureElement = captureElement; };
-		void setDeviceId(Platform::String^ id) { mDeviceId = id; };
+		void setCaptureElement(Windows::UI::Xaml::Controls::CaptureElement^ captureElement) { mCaptureElement = captureElement; }
+		void setDeviceId(Platform::String^ id) { mDeviceId = id; }
+		void setFront(bool front) { mFront = front; }
+		void setExternal(bool external) { mExternal = external; }
 		MSPixFmt getPixFmt() { return MS_YUV420P; }
 		float getFps() { return mFps; }
+		float getAverageFps();
 		void setFps(float fps);
 		MSVideoSize getVideoSize();
 		void setVideoSize(MSVideoSize vs);
-		int getCameraSensorRotation() { return mCameraSensorRotation; }
+		int getDeviceOrientation() { return mDeviceOrientation; }
 		void setDeviceOrientation(int degrees);
 
 		static void detectCameras(MSWebCamManager *manager, MSWebCamDesc *desc);
@@ -70,15 +74,18 @@ namespace libmswinrtvid
 	private:
 		void applyFps();
 		void applyVideoSize();
-		bool selectBestVideoSize();
+		void selectBestVideoSize(MSVideoSize vs);
 		void configure();
-		static void addCamera(MSWebCamManager *manager, MSWebCamDesc *desc, Platform::String^ DeviceId, Platform::String^ DeviceName);
+		static void addCamera(MSWebCamManager *manager, MSWebCamDesc *desc, Windows::Devices::Enumeration::DeviceInformation^ DeviceInfo);
+		static void registerCameras(MSWebCamManager *manager);
 
 		static bool smInstantiated;
+		static MSList *smCameras;
 		bool mIsInitialized;
 		bool mIsActivated;
 		bool mIsStarted;
 		float mFps;
+		MSAverageFPS mAvgFps;
 		MSVideoSize mVideoSize;
 		MSQueue mSampleToSendQueue;
 		MSQueue mSampleToFreeQueue;
@@ -88,15 +95,18 @@ namespace libmswinrtvid
 		int mCameraSensorRotation;
 		int mDeviceOrientation;
 		MSVideoStarter mStarter;
-		HANDLE mActivationCompleted;
+		HANDLE mInitializationCompleted;
 		HANDLE mStartCompleted;
 		HANDLE mStopCompleted;
 		HANDLE mPreviewStartCompleted;
 		HANDLE mPreviewStopCompleted;
 		Windows::UI::Xaml::Controls::CaptureElement^ mCaptureElement;
 		Platform::String^ mDeviceId;
+		bool mFront;
+		bool mExternal;
 		Platform::Agile<MediaCapture^> mCapture;
 		MediaEncodingProfile^ mEncodingProfile;
 		ComPtr<IMFMediaSink> mMediaSink;
+		const GUID mRotationKey;
 	};
 }

@@ -31,6 +31,8 @@ using namespace Windows::Media::Core;
 using namespace Windows::Media::MediaProperties;
 
 
+//#define MSWINRTDIS_DEBUG
+
 
 static void _startMediaElement(Windows::UI::Xaml::Controls::MediaElement^ mediaElement, Windows::Media::Core::MediaStreamSource^ mediaStreamSource)
 {
@@ -51,9 +53,9 @@ bool MSWinRTDis::smInstantiated = false;
 
 
 MSWinRTDisSampleHandler::MSWinRTDisSampleHandler() :
-	mLastPresentationTime(0), mLastFilterTime(0), mPixFmt(MS_YUV420P), mWidth(MS_VIDEO_SIZE_CIF_W), mHeight(MS_VIDEO_SIZE_CIF_H)
+	mSample(nullptr), mReferenceTime(0), mPixFmt(MS_YUV420P), mWidth(MS_VIDEO_SIZE_CIF_W), mHeight(MS_VIDEO_SIZE_CIF_H), mStarted(false)
 {
-	mSampleQueue = ref new Platform::Collections::Vector<MSWinRTDisSample^>();
+	mDeferralQueue = ref new Platform::Collections::Vector<MSWinRTDisDeferral^>();
 }
 
 MSWinRTDisSampleHandler::~MSWinRTDisSampleHandler()
@@ -64,7 +66,7 @@ void MSWinRTDisSampleHandler::StartMediaElement()
 {
 	if (mMediaElement != nullptr) {
 		VideoEncodingProperties^ videoEncodingProperties;
-		videoEncodingProperties = VideoEncodingProperties::CreateUncompressed(MediaEncodingSubtypes::Yv12, this->Width, this->Height);
+		videoEncodingProperties = VideoEncodingProperties::CreateUncompressed(MediaEncodingSubtypes::Nv12, this->Width, this->Height);
 		VideoStreamDescriptor^ videoStreamDescriptor = ref new VideoStreamDescriptor(videoEncodingProperties);
 		MediaStreamSource^ mediaStreamSource = ref new MediaStreamSource(videoStreamDescriptor);
 		mediaStreamSource->SampleRequested += ref new Windows::Foundation::TypedEventHandler<Windows::Media::Core::MediaStreamSource ^, Windows::Media::Core::MediaStreamSourceSampleRequestedEventArgs ^>(this, &MSWinRTDisSampleHandler::OnSampleRequested);
@@ -81,6 +83,7 @@ void MSWinRTDisSampleHandler::StartMediaElement()
 			}));
 		}
 	}
+	mStarted = true;
 }
 
 void MSWinRTDisSampleHandler::StopMediaElement()
@@ -98,25 +101,31 @@ void MSWinRTDisSampleHandler::StopMediaElement()
 			}));
 		}
 	}
+	mDeferralQueue->Clear();
+	mStarted = false;
 }
 
-void MSWinRTDisSampleHandler::Feed(Windows::Storage::Streams::IBuffer^ pBuffer, UINT64 filterTime)
+void MSWinRTDisSampleHandler::Feed(Windows::Storage::Streams::IBuffer^ pBuffer)
 {
-	MSWinRTDisSample^ sample = ref new MSWinRTDisSample(pBuffer, filterTime);
 	mMutex.lock();
-	mSampleQueue->Append(sample);
-
-	if ((mSampleRequestDeferral != nullptr) && (mSampleRequest != nullptr)) {
-		AnswerSampleRequest(mSampleRequest);
-		mSampleRequestDeferral->Complete();
-		mSampleRequest = nullptr;
-		mSampleRequestDeferral = nullptr;
-#ifdef _DEBUG
-		ms_message("OnSampleReceived fill sample [queue: %d, lastFilterTime=%llu, lastPresentationTime=%llu]", mSampleQueue->Size, mLastFilterTime, mLastPresentationTime);
-	} else {
-		ms_message("OnSampleReceived queue sample [queue: %d]", mSampleQueue->Size);
-#endif
+	if (!mStarted) {
+		StartMediaElement();
 	}
+	mSample = pBuffer;
+	if (mDeferralQueue->Size > 0) {
+#ifdef MSWINRTDIS_DEBUG
+		ms_message("[MSWinRTDis] Feed answer deferral");
+#endif
+		MSWinRTDisDeferral^ deferral = mDeferralQueue->GetAt(0);
+		mDeferralQueue->RemoveAt(0);
+		AnswerSampleRequest(deferral->Request);
+		deferral->Deferral->Complete();
+	}
+#ifdef MSWINRTDIS_DEBUG
+	else {
+		ms_message("[MSWinRTDis] Feed");
+	}
+#endif
 	mMutex.unlock();
 }
 
@@ -125,53 +134,44 @@ void MSWinRTDisSampleHandler::OnSampleRequested(Windows::Media::Core::MediaStrea
 	MediaStreamSourceSampleRequest^ request = args->Request;
 	VideoStreamDescriptor^ videoStreamDescriptor = dynamic_cast<VideoStreamDescriptor^>(request->StreamDescriptor);
 	if (videoStreamDescriptor == nullptr) {
-		ms_warning("OnSampleRequested not for a video stream!");
+		ms_warning("[MSWinRTDis] OnSampleRequested not for a video stream!");
 		return;
 	}
 	mMutex.lock();
-	if (mSampleQueue->Size > 0) {
-		AnswerSampleRequest(request);
-#ifdef _DEBUG
-		ms_message("OnSampleRequested fill sample [queue: %d, lastFilterTime=%llu, lastPresentationTime=%llu]", mSampleQueue->Size, mLastFilterTime, mLastPresentationTime);
+	if (mSample == nullptr) {
+#ifdef MSWINRTDIS_DEBUG
+		ms_message("[MSWinRTDis] OnSampleRequested defer");
 #endif
+		mDeferralQueue->Append(ref new MSWinRTDisDeferral(request, request->GetDeferral()));
 	} else {
-#ifdef _DEBUG
-		ms_message("OnSampleRequested wait for sample [queue: %d]", mSampleQueue->Size);
+#ifdef MSWINRTDIS_DEBUG
+		ms_message("[MSWinRTDis] OnSampleRequested answer");
 #endif
-		mSampleRequestDeferral = request->GetDeferral();
-		mSampleRequest = request;
+		AnswerSampleRequest(request);
 	}
 	mMutex.unlock();
 }
 
 void MSWinRTDisSampleHandler::AnswerSampleRequest(Windows::Media::Core::MediaStreamSourceSampleRequest^ sampleRequest)
 {
-	MSWinRTDisSample^ sample = mSampleQueue->GetAt(0);
-	mSampleQueue->RemoveAt(0);
-	if (sample->Buffer != nullptr) {
-		TimeSpan ts;
-		if ((mLastFilterTime == 0) || (mSampleQueue->Size > 0)) {
-			ts.Duration = mLastPresentationTime;
-		} else {
-			ts.Duration = mLastPresentationTime + ((sample->FilterTime - mLastFilterTime) * 10000LL);
-		}
-		MediaStreamSample^ streamSample = MediaStreamSample::CreateFromBuffer(sample->Buffer, ts);
-		sampleRequest->Sample = streamSample;
-		mLastFilterTime = sample->FilterTime;
-		mLastPresentationTime = ts.Duration;
-	} else {
-		// This is a request to restart the media element
-		StopMediaElement();
-		mLastPresentationTime = mLastFilterTime = 0;
-		StartMediaElement();
+	TimeSpan ts;
+	UINT64 CurrentTime = GetTickCount64() * 10000LL;
+	if (mReferenceTime == 0) {
+		mReferenceTime = CurrentTime;
 	}
+	ts.Duration = CurrentTime - mReferenceTime;
+	sampleRequest->Sample = MediaStreamSample::CreateFromBuffer(mSample, ts);
+	mSample = nullptr;
 }
 
 void MSWinRTDisSampleHandler::RequestMediaElementRestart()
 {
-	MSWinRTDisSample^ sample = ref new MSWinRTDisSample(nullptr, 0);
 	mMutex.lock();
-	mSampleQueue->Append(sample);
+	ms_message("[MSWinRTDis] RequestMediaElementRestart");
+	if (mReferenceTime != 0) {
+		StopMediaElement();
+		mReferenceTime = 0;
+	}
 	mMutex.unlock();
 }
 
@@ -213,7 +213,6 @@ void MSWinRTDis::start()
 {
 	if (!mIsStarted && mIsActivated) {
 		mIsStarted = true;
-		mSampleHandler->StartMediaElement();
 	}
 }
 
@@ -230,36 +229,38 @@ int MSWinRTDis::feed(MSFilter *f)
 	if (mIsStarted) {
 		mblk_t *im;
 
-		while ((im = ms_queue_get(f->inputs[0])) != NULL) {
+		if ((f->inputs[0] != NULL) && ((im = ms_queue_peek_last(f->inputs[0])) != NULL)) {
 			int size = 0;
 			MSPicture buf;
-			ms_yuv_buf_init_from_mblk(&buf, im);
-			if ((buf.w != mSampleHandler->Width) || (buf.h != mSampleHandler->Height)) {
-				mSampleHandler->Width = buf.w;
-				mSampleHandler->Height = buf.h;
-				mSampleHandler->RequestMediaElementRestart();
-				if (mBuffer) ms_free(mBuffer);
-			}
-			size = (buf.w * buf.h * 3) / 2;
-			if (!mBuffer) mBuffer = (uint8_t *)ms_malloc(size);
-			int ysize = buf.w * buf.h;
-			int usize = ysize / 4;
-			memcpy(mBuffer, buf.planes[0], ysize);
-			memcpy(mBuffer + ysize, buf.planes[2], usize);
-			memcpy(mBuffer + ysize + usize, buf.planes[1], usize);
-			freemsg(im);
-			if (size > 0) {
+			if (ms_yuv_buf_init_from_mblk(&buf, im) == 0) {
+				if ((buf.w != mSampleHandler->Width) || (buf.h != mSampleHandler->Height)) {
+					mSampleHandler->Width = buf.w;
+					mSampleHandler->Height = buf.h;
+					mSampleHandler->RequestMediaElementRestart();
+					if (mBuffer) {
+						ms_free(mBuffer);
+						mBuffer = NULL;
+					}
+				}
+				size = (buf.w * buf.h * 3) / 2;
+				if (!mBuffer) mBuffer = (uint8_t *)ms_malloc(size);
+				int ysize = buf.w * buf.h;
+				int usize = ysize / 4;
+				memcpy(mBuffer, buf.planes[0], ysize);
+				for (int i = 0; i < usize; i++) {
+					mBuffer[ysize + (i * 2)] = buf.planes[1][i];
+					mBuffer[ysize + (i * 2) + 1] = buf.planes[2][i];
+				}
 				ComPtr<VideoBuffer> spVideoBuffer = NULL;
 				MakeAndInitialize<VideoBuffer>(&spVideoBuffer, mBuffer, size);
-				mSampleHandler->Feed(VideoBuffer::GetIBuffer(spVideoBuffer), f->ticker->time);
+				mSampleHandler->Feed(VideoBuffer::GetIBuffer(spVideoBuffer));
 			}
-		}
-	} else {
-		if (f->inputs[0] != NULL) {
-			ms_queue_flush(f->inputs[0]);
 		}
 	}
 
+	if (f->inputs[0] != NULL) {
+		ms_queue_flush(f->inputs[0]);
+	}
 	if (f->inputs[1] != NULL) {
 		ms_queue_flush(f->inputs[1]);
 	}

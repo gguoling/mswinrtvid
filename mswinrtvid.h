@@ -38,6 +38,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 typedef struct WinRTWebcam {
 	std::vector<wchar_t> *id_vector;
 	LPWSTR id;
+	bool_t external;
+	bool_t front;
 } WinRTWebcam;
 #endif
 
