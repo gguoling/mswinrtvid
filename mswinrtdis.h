@@ -50,8 +50,8 @@ namespace libmswinrtvid
 
 		property Windows::Storage::Streams::IBuffer^ Buffer
 		{
-			Windows::Storage::Streams::IBuffer^ get() { return mBuffer; };
-			void set(Windows::Storage::Streams::IBuffer^ value) { mBuffer = value; };
+			Windows::Storage::Streams::IBuffer^ get() { return mBuffer; }
+			void set(Windows::Storage::Streams::IBuffer^ value) { mBuffer = value; }
 		}
 
 		property UINT64 FilterTime
@@ -65,6 +65,34 @@ namespace libmswinrtvid
 
 		Windows::Storage::Streams::IBuffer^ mBuffer;
 		UINT64 mFilterTime;
+	};
+
+	private ref class MSWinRTDisDeferral sealed
+	{
+	public:
+		MSWinRTDisDeferral(Windows::Media::Core::MediaStreamSourceSampleRequest^ request, Windows::Media::Core::MediaStreamSourceSampleRequestDeferral^ deferral)
+		{
+			this->Request = request;
+			this->Deferral = deferral;
+		}
+
+		property Windows::Media::Core::MediaStreamSourceSampleRequest^ Request
+		{
+			Windows::Media::Core::MediaStreamSourceSampleRequest^ get() { return mRequest; }
+			void set(Windows::Media::Core::MediaStreamSourceSampleRequest^ value) { mRequest = value; }
+		}
+
+		property Windows::Media::Core::MediaStreamSourceSampleRequestDeferral^ Deferral
+		{
+			Windows::Media::Core::MediaStreamSourceSampleRequestDeferral^ get() { return mDeferral; }
+			void set(Windows::Media::Core::MediaStreamSourceSampleRequestDeferral^ value) { mDeferral = value; }
+		}
+
+	private:
+		~MSWinRTDisDeferral() {};
+
+		Windows::Media::Core::MediaStreamSourceSampleRequest^ mRequest;
+		Windows::Media::Core::MediaStreamSourceSampleRequestDeferral^ mDeferral;
 	};
 
 	private ref class MSWinRTDisSampleHandler sealed
@@ -106,12 +134,14 @@ namespace libmswinrtvid
 		void AnswerSampleRequest(Windows::Media::Core::MediaStreamSourceSampleRequest^ sampleRequest);
 
 		MSWinRTDisSample^ mSample;
+		Platform::Collections::Vector<MSWinRTDisDeferral^>^ mDeferralQueue;
 		Windows::UI::Xaml::Controls::MediaElement^ mMediaElement;
 		UINT64 mReferenceTime;
 		std::mutex mMutex;
 		MSPixFmt mPixFmt;
 		int mWidth;
 		int mHeight;
+		bool mStarted;
 	};
 
 
