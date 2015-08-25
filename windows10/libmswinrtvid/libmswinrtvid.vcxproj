@@ -37,11 +37,14 @@
   <ItemGroup>
     <ClCompile Include="..\..\mswinrtcap.cpp" />
     <ClCompile Include="..\..\mswinrtdis.cpp" />
+    <ClCompile Include="..\..\mswinrtmediasink.cpp" />
     <ClCompile Include="..\..\mswinrtvid.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\..\LinkList.h" />
     <ClInclude Include="..\..\mswinrtcap.h" />
     <ClInclude Include="..\..\mswinrtdis.h" />
+    <ClInclude Include="..\..\mswinrtmediasink.h" />
     <ClInclude Include="..\..\mswinrtvid.h" />
     <ClInclude Include="..\..\VideoBuffer.h" />
   </ItemGroup>
@@ -94,6 +97,7 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
+      <AdditionalDependencies>WindowsApp.lib;mfplat.lib;mfuuid.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)'=='Release'">
@@ -108,6 +112,7 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
+      <AdditionalDependencies>WindowsApp.lib;mfplat.lib;mfuuid.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
