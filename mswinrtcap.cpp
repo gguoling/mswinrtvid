@@ -222,7 +222,6 @@ void MSWinRTCap::start()
 		WaitForSingleObjectEx(mPreviewStartCompleted, INFINITE, FALSE);
 
 		MediaEncodingProfile^ mediaEncodingProfile = mEncodingProfile;
-		mediaEncodingProfile->Video->Properties->Insert(mRotationKey, mDeviceOrientation);
 		MakeAndInitialize<MSWinRTMediaSink>(&mMediaSink, mEncodingProfile->Video);
 		static_cast<MSWinRTMediaSink *>(mMediaSink.Get())->SetCaptureFilter(this);
 		ComPtr<IInspectable> spInspectable;
@@ -304,7 +303,7 @@ void MSWinRTCap::OnSampleAvailable(BYTE *buf, DWORD bufLen, LONGLONG presentatio
 	}
 	uint8_t *y = (uint8_t *)buf;
 	uint8_t *cbcr = (uint8_t *)(buf + w * h);
-	m = copy_ycbcrbiplanar_to_true_yuv_with_rotation(mAllocator, y, cbcr, 0, w, h, w, w, TRUE);
+	m = copy_ycbcrbiplanar_to_true_yuv_with_rotation(mAllocator, y, cbcr, mDeviceOrientation, w, h, mVideoSize.width, mVideoSize.width, TRUE);
 	mblk_set_timestamp_info(m, timestamp);
 
 	ms_mutex_lock(&mMutex);
@@ -412,9 +411,11 @@ void MSWinRTCap::applyFps()
 void MSWinRTCap::applyVideoSize()
 {
 	if (mEncodingProfile != nullptr) {
-		MSVideoSize vs = getVideoSize();
+		MSVideoSize vs = mVideoSize;
 		mEncodingProfile->Video->Width = vs.width;
 		mEncodingProfile->Video->Height = vs.height;
+		mEncodingProfile->Video->PixelAspectRatio->Numerator = vs.width;
+		mEncodingProfile->Video->PixelAspectRatio->Denominator = vs.height;
 	}
 }
 
@@ -423,7 +424,7 @@ void MSWinRTCap::configure()
 	mEncodingProfile = ref new MediaEncodingProfile();
 	mEncodingProfile->Audio = nullptr;
 	mEncodingProfile->Container = nullptr;
-	MSVideoSize vs = getVideoSize();
+	MSVideoSize vs = mVideoSize;
 	mEncodingProfile->Video = VideoEncodingProperties::CreateUncompressed(MediaEncodingSubtypes::Nv12, vs.width, vs.height);
 }
 
