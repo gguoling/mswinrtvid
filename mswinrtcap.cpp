@@ -333,8 +333,8 @@ MSVideoSize MSWinRTCapHelper::SelectBestVideoSize(MSVideoSize vs)
 	}
 
 	if ((bestFoundSize.width == 0) && bestFoundSize.height == 0) {
-		ms_warning("[MSWinRTCap] This camera does not support our video size, use minimum size available");
-		return minSize;
+		ms_warning("[MSWinRTCap] This camera does not support our video size, use requested size");
+		return vs;
 	}
 
 	ms_message("[MSWinRTCap] Best video size is %ix%i", bestFoundSize.width, bestFoundSize.height);
