@@ -463,9 +463,9 @@ void MSWinRTCap::selectBestVideoSize(MSVideoSize vs)
 void MSWinRTCap::setDeviceOrientation(int degrees)
 {
 	if (mFront) {
-		mDeviceOrientation = degrees;
+		mDeviceOrientation = degrees % 360;
 	} else {
-		mDeviceOrientation = 360 - degrees;
+		mDeviceOrientation = (360 - degrees) % 360;
 	}
 }
 
