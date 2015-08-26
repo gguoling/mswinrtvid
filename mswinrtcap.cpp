@@ -142,54 +142,68 @@ bool MSWinRTCapHelper::StartPreview(int DeviceOrientation)
 {
 	bool isStarted = false;
 	mDeviceOrientation = DeviceOrientation;
-	IAsyncAction^ previewAction = mCapture->StartPreviewAsync();
-	previewAction->Completed = ref new AsyncActionCompletedHandler([this, &isStarted](IAsyncAction^ asyncAction, Windows::Foundation::AsyncStatus asyncStatus) {
-		IAsyncAction^ previewPropertiesAction = nullptr;
-		IMediaEncodingProperties^ props = nullptr;
-		switch (asyncStatus) {
-		case Windows::Foundation::AsyncStatus::Completed:
-			ms_message("[MSWinRTCap] StartPreviewAsync completed");
-			props = mCapture->VideoDeviceController->GetMediaStreamProperties(Capture::MediaStreamType::VideoPreview);
-			props->Properties->Insert(mRotationKey, mDeviceOrientation);
-			previewPropertiesAction = mCapture->SetEncodingPropertiesAsync(Capture::MediaStreamType::VideoPreview, props, nullptr);
-			previewPropertiesAction->Completed = ref new AsyncActionCompletedHandler([this, &isStarted](IAsyncAction^ asyncAction, Windows::Foundation::AsyncStatus asyncStatus) {
-				isStarted = true;
-				switch (asyncStatus) {
-				case Windows::Foundation::AsyncStatus::Completed:
-					ms_message("[MSWinRTCap] SetEncodingPropertiesAsync completed");
-					break;
-				case Windows::Foundation::AsyncStatus::Canceled:
-					ms_error("[MSWinRTCap] SetEncodingPropertiesAsync has been cancelled");
-					break;
-				case Windows::Foundation::AsyncStatus::Error:
-				{
-					int res = asyncAction->ErrorCode.Value;
-					ms_error("[MSWinRTCap] SetEncodingPropertiesAsync failed [0x%x]", res);
+	try {
+		IAsyncAction^ previewAction = mCapture->StartPreviewAsync();
+		previewAction->Completed = ref new AsyncActionCompletedHandler([this, &isStarted](IAsyncAction^ asyncAction, Windows::Foundation::AsyncStatus asyncStatus) {
+			IAsyncAction^ previewPropertiesAction = nullptr;
+			IMediaEncodingProperties^ props = nullptr;
+			switch (asyncStatus) {
+			case Windows::Foundation::AsyncStatus::Completed:
+				ms_message("[MSWinRTCap] StartPreviewAsync completed");
+				props = mCapture->VideoDeviceController->GetMediaStreamProperties(Capture::MediaStreamType::VideoPreview);
+				props->Properties->Insert(mRotationKey, mDeviceOrientation);
+				try {
+					previewPropertiesAction = mCapture->SetEncodingPropertiesAsync(Capture::MediaStreamType::VideoPreview, props, nullptr);
+					previewPropertiesAction->Completed = ref new AsyncActionCompletedHandler([this, &isStarted](IAsyncAction^ asyncAction, Windows::Foundation::AsyncStatus asyncStatus) {
+						isStarted = true;
+						switch (asyncStatus) {
+						case Windows::Foundation::AsyncStatus::Completed:
+							ms_message("[MSWinRTCap] SetEncodingPropertiesAsync completed");
+							break;
+						case Windows::Foundation::AsyncStatus::Canceled:
+							ms_error("[MSWinRTCap] SetEncodingPropertiesAsync has been cancelled");
+							break;
+						case Windows::Foundation::AsyncStatus::Error:
+						{
+							int res = asyncAction->ErrorCode.Value;
+							ms_error("[MSWinRTCap] SetEncodingPropertiesAsync failed [0x%x]", res);
+						}
+						break;
+						default:
+							break;
+						}
+						SetEvent(mPreviewStartCompleted);
+					});
+				} catch (Exception^ e) {
+					ms_error("[MSWinRTCap] StartPreviewAsync exception 0x%x", e->HResult);
+					// Apparently, sometimes the preview is not correctly stopped, try again...
+					StopPreview();
+					SetEvent(mPreviewStartCompleted);
 				}
 				break;
-				default:
-					break;
-				}
+			case Windows::Foundation::AsyncStatus::Canceled:
+				ms_error("[MSWinRTCap] StartPreviewAsync has been cancelled");
 				SetEvent(mPreviewStartCompleted);
-			});
+				break;
+			case Windows::Foundation::AsyncStatus::Error:
+			{
+				int res = asyncAction->ErrorCode.Value;
+				ms_error("[MSWinRTCap] StartPreviewAsync failed [0x%x]", res);
+				SetEvent(mPreviewStartCompleted);
+			}
 			break;
-		case Windows::Foundation::AsyncStatus::Canceled:
-			ms_error("[MSWinRTCap] StartPreviewAsync has been cancelled");
-			SetEvent(mPreviewStartCompleted);
-			break;
-		case Windows::Foundation::AsyncStatus::Error:
-		{
-			int res = asyncAction->ErrorCode.Value;
-			ms_error("[MSWinRTCap] StartPreviewAsync failed [0x%x]", res);
-			SetEvent(mPreviewStartCompleted);
-		}
-		break;
-		default:
-			SetEvent(mPreviewStartCompleted);
-			break;
-		}
-	});
-	WaitForSingleObjectEx(mPreviewStartCompleted, INFINITE, FALSE);
+			default:
+				SetEvent(mPreviewStartCompleted);
+				break;
+			}
+		});
+		WaitForSingleObjectEx(mPreviewStartCompleted, INFINITE, FALSE);
+	}
+	catch (Exception^ e) {
+		ms_error("[MSWinRTCap] SetEncodingPropertiesAsync exception 0x%x", e->HResult);
+		// Apparently, sometimes the preview is not correctly stopped, try again...
+		StopPreview();
+	}
 	return isStarted;
 }
 
