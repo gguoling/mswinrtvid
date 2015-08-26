@@ -1306,7 +1306,7 @@ void MSWinRTMediaSink::ReportEndOfStream()
 void MSWinRTMediaSink::OnSampleAvailable(BYTE *buf, DWORD bufLen, LONGLONG presentationTime)
 {
 	MSWINRTMEDIASINK_DEBUG("MSWinRTMediaSink::OnSampleAvailable");
-	if (_capture != NULL) {
+	if (_capture != nullptr) {
 		_capture->OnSampleAvailable(buf, bufLen, presentationTime);
 	}
 }

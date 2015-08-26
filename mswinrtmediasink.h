@@ -31,7 +31,7 @@ using namespace Windows::Media::MediaProperties;
 
 
 namespace libmswinrtvid {
-	class MSWinRTCap;
+	ref class MSWinRTCapHelper;
 	class MSWinRTMediaSink;
 
 
@@ -361,7 +361,7 @@ namespace libmswinrtvid {
 		LONGLONG GetStartTime() const { return _llStartTime; }
 
 		void ReportEndOfStream();
-		void SetCaptureFilter(MSWinRTCap *capture) { _capture = capture; }
+		void SetCaptureFilter(MSWinRTCapHelper^ capture) { _capture = capture; }
 		void OnSampleAvailable(BYTE *buf, DWORD bufLen, LONGLONG presentationTime);
 
 	private:
@@ -378,7 +378,7 @@ namespace libmswinrtvid {
 
 	private:
 		ComPtr<IMFStreamSink> _stream;
-		MSWinRTCap *_capture;
+		MSWinRTCapHelper^ _capture;
 
 		long                            _cRef;                      // reference count
 		CritSec							_critSec;                   // critical section for thread safety
