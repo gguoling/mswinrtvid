@@ -268,7 +268,6 @@ void MSWinRTCapHelper::StopCapture()
 
 void MSWinRTCapHelper::OnSampleAvailable(BYTE *buf, DWORD bufLen, LONGLONG presentationTime)
 {
-	ms_error("GMA: OnSampleAvailable");
 	mblk_t *m;
 	uint32_t timestamp = (uint32_t)((presentationTime / 10000LL) * 90LL);
 
@@ -345,7 +344,6 @@ MSVideoSize MSWinRTCapHelper::SelectBestVideoSize(MSVideoSize vs)
 MSWinRTCap::MSWinRTCap()
 	: mIsInitialized(false), mIsActivated(false), mIsStarted(false), mFps(15), mStartTime(0), mDeviceOrientation(0)
 {
-	ms_error("GMA: MSWinRTCap");
 	if (smInstantiated) {
 		ms_error("[MSWinRTCap] An video capture filter is already instantiated. A second one can not be created.");
 		return;
@@ -359,7 +357,6 @@ MSWinRTCap::MSWinRTCap()
 
 MSWinRTCap::~MSWinRTCap()
 {
-	ms_error("GMA: ~MSWinRTCap");
 	stop();
 	deactivate();
 	smInstantiated = false;
@@ -368,13 +365,11 @@ MSWinRTCap::~MSWinRTCap()
 
 void MSWinRTCap::initialize()
 {
-	ms_error("GMA: initialize");
 	mIsInitialized = mHelper->Initialize(mDeviceId);
 }
 
 int MSWinRTCap::activate()
 {
-	ms_error("GMA: activate");
 	if (!mIsInitialized) return -1;
 
 	ms_average_fps_init(&mAvgFps, "[MSWinRTCap] fps=%f");
@@ -390,7 +385,6 @@ int MSWinRTCap::activate()
 
 int MSWinRTCap::deactivate()
 {
-	ms_error("GMA: deactivate");
 	mHelper->StopPreview();
 	mIsActivated = false;
 	return 0;
@@ -398,7 +392,6 @@ int MSWinRTCap::deactivate()
 
 void MSWinRTCap::start()
 {
-	ms_error("GMA: start");
 	if (!mIsStarted && mIsActivated) {
 		mIsStarted = mHelper->StartPreview(mDeviceOrientation);
 		if (mIsStarted) mIsStarted = mHelper->StartCapture(mEncodingProfile);
@@ -407,7 +400,6 @@ void MSWinRTCap::start()
 
 void MSWinRTCap::stop()
 {
-	ms_error("GMA: stop");
 	mblk_t *m;
 
 	if (!mIsStarted) return;
@@ -422,7 +414,6 @@ void MSWinRTCap::stop()
 
 int MSWinRTCap::feed(MSFilter *f)
 {
-	ms_error("GMA: feed");
 	mblk_t *im;
 
 	// Send queued samples
@@ -437,20 +428,17 @@ int MSWinRTCap::feed(MSFilter *f)
 
 void MSWinRTCap::setFps(float fps)
 {
-	ms_error("GMA: setFps");
 	mFps = fps;
 	applyFps();
 }
 
 float MSWinRTCap::getAverageFps()
 {
-	ms_error("GMA: getAverageFps");
 	return ms_average_fps_get(&mAvgFps);
 }
 
 MSVideoSize MSWinRTCap::getVideoSize()
 {
-	ms_error("GMA: getVideoSize");
 	MSVideoSize vs;
 	if ((mDeviceOrientation % 180) == 90) {
 		vs.width = mVideoSize.height;
@@ -463,20 +451,17 @@ MSVideoSize MSWinRTCap::getVideoSize()
 
 void MSWinRTCap::setVideoSize(MSVideoSize vs)
 {
-	ms_error("GMA: setVideoSize");
 	selectBestVideoSize(vs);
 	applyVideoSize();
 }
 
 void MSWinRTCap::selectBestVideoSize(MSVideoSize vs)
 {
-	ms_error("GMA: selectBestVideoSize");
 	mVideoSize = mHelper->SelectBestVideoSize(vs);
 }
 
 void MSWinRTCap::setDeviceOrientation(int degrees)
 {
-	ms_error("GMA: setDeviceOrientation");
 	if (mFront) {
 		mDeviceOrientation = degrees;
 	} else {
@@ -487,7 +472,6 @@ void MSWinRTCap::setDeviceOrientation(int degrees)
 
 void MSWinRTCap::applyFps()
 {
-	ms_error("GMA: applyFps");
 	if (mEncodingProfile != nullptr) {
 		mEncodingProfile->Video->FrameRate->Numerator = (unsigned int)mFps;
 		mEncodingProfile->Video->FrameRate->Denominator = 1;
@@ -496,7 +480,6 @@ void MSWinRTCap::applyFps()
 
 void MSWinRTCap::applyVideoSize()
 {
-	ms_error("GMA: applyVideoSize");
 	if (mEncodingProfile != nullptr) {
 		MSVideoSize vs = mVideoSize;
 		mEncodingProfile->Video->Width = vs.width;
@@ -508,7 +491,6 @@ void MSWinRTCap::applyVideoSize()
 
 void MSWinRTCap::configure()
 {
-	ms_error("GMA: configure");
 	mEncodingProfile = ref new MediaEncodingProfile();
 	mEncodingProfile->Audio = nullptr;
 	mEncodingProfile->Container = nullptr;
