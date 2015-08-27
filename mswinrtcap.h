@@ -41,6 +41,43 @@ using namespace Windows::Media::MediaProperties;
 
 namespace libmswinrtvid
 {
+	ref class MSWinRTCapHelper sealed {
+	internal:
+		MSWinRTCapHelper();
+		bool Initialize(Platform::String^ DeviceId);
+		bool StartPreview(int DeviceOrientation);
+		void StopPreview();
+		bool StartCapture(Windows::Media::MediaProperties::MediaEncodingProfile^ EncodingProfile);
+		void StopCapture();
+		void MSWinRTCapHelper::OnSampleAvailable(BYTE *buf, DWORD bufLen, LONGLONG presentationTime);
+		MSVideoSize SelectBestVideoSize(MSVideoSize vs);
+		mblk_t * GetSample();
+		
+		property Platform::Agile<MediaCapture^> CaptureDevice
+		{
+			Platform::Agile<MediaCapture^> get() { return mCapture; }
+		}
+
+	private:
+		~MSWinRTCapHelper();
+		void OnCaptureFailed(Windows::Media::Capture::MediaCapture^ sender, Windows::Media::Capture::MediaCaptureFailedEventArgs^ errorEventArgs);
+
+		HANDLE mInitializationCompleted;
+		HANDLE mStartCompleted;
+		HANDLE mStopCompleted;
+		HANDLE mPreviewStartCompleted;
+		HANDLE mPreviewStopCompleted;
+		const GUID mRotationKey;
+		Platform::Agile<MediaCapture^> mCapture;
+		Windows::Foundation::EventRegistrationToken mMediaCaptureFailedEventRegistrationToken;
+		ComPtr<IMFMediaSink> mMediaSink;
+		MediaEncodingProfile^ mEncodingProfile;
+		int mDeviceOrientation;
+		ms_mutex_t mMutex;
+		MSYuvBufAllocator *mAllocator;
+		MSQueue mSamplesQueue;
+	};
+
 	class MSWinRTCap {
 	public:
 		MSWinRTCap();
@@ -87,26 +124,14 @@ namespace libmswinrtvid
 		float mFps;
 		MSAverageFPS mAvgFps;
 		MSVideoSize mVideoSize;
-		MSQueue mSampleToSendQueue;
-		MSQueue mSampleToFreeQueue;
-		ms_mutex_t mMutex;
-		MSYuvBufAllocator *mAllocator;
 		uint64_t mStartTime;
-		int mCameraSensorRotation;
 		int mDeviceOrientation;
 		MSVideoStarter mStarter;
-		HANDLE mInitializationCompleted;
-		HANDLE mStartCompleted;
-		HANDLE mStopCompleted;
-		HANDLE mPreviewStartCompleted;
-		HANDLE mPreviewStopCompleted;
 		Windows::UI::Xaml::Controls::CaptureElement^ mCaptureElement;
 		Platform::String^ mDeviceId;
 		bool mFront;
 		bool mExternal;
-		Platform::Agile<MediaCapture^> mCapture;
+		MSWinRTCapHelper^ mHelper;
 		MediaEncodingProfile^ mEncodingProfile;
-		ComPtr<IMFMediaSink> mMediaSink;
-		const GUID mRotationKey;
 	};
 }
