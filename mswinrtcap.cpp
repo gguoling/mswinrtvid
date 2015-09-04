@@ -345,7 +345,7 @@ MSWinRTCap::MSWinRTCap()
 	: mIsInitialized(false), mIsActivated(false), mIsStarted(false), mFps(15), mStartTime(0), mDeviceOrientation(0)
 {
 	if (smInstantiated) {
-		ms_error("[MSWinRTCap] An video capture filter is already instantiated. A second one can not be created.");
+		ms_error("[MSWinRTCap] A video capture filter is already instantiated. A second one can not be created.");
 		return;
 	}
 
@@ -385,6 +385,7 @@ int MSWinRTCap::activate()
 
 int MSWinRTCap::deactivate()
 {
+	if (!mIsActivated) return -1;
 	mHelper->StopPreview();
 	mIsActivated = false;
 	return 0;
