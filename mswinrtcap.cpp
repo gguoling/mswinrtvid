@@ -345,7 +345,7 @@ MSWinRTCap::MSWinRTCap()
 	: mIsInitialized(false), mIsActivated(false), mIsStarted(false), mFps(15), mStartTime(0), mDeviceOrientation(0)
 {
 	if (smInstantiated) {
-		ms_error("[MSWinRTCap] An video capture filter is already instantiated. A second one can not be created.");
+		ms_error("[MSWinRTCap] A video capture filter is already instantiated. A second one can not be created.");
 		return;
 	}
 
@@ -370,7 +370,7 @@ void MSWinRTCap::initialize()
 
 int MSWinRTCap::activate()
 {
-	if (!mIsInitialized) return -1;
+	if (!mIsInitialized) initialize();
 
 	ms_average_fps_init(&mAvgFps, "[MSWinRTCap] fps=%f");
 	configure();
@@ -387,6 +387,7 @@ int MSWinRTCap::deactivate()
 {
 	mHelper->StopPreview();
 	mIsActivated = false;
+	mIsInitialized = false;
 	return 0;
 }
 

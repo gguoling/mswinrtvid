@@ -191,7 +191,6 @@ static MSFilter *ms_winrtcap_create_reader(MSWebCam *cam) {
 	r->setDeviceId(ref new Platform::String(winrtcam->id));
 	r->setFront(winrtcam->front == TRUE);
 	r->setExternal(winrtcam->external == TRUE);
-	r->initialize();
 	return f;
 }
 
