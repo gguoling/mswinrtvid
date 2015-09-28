@@ -133,7 +133,6 @@ namespace libmswinrtvid
 		void setMediaElement(Windows::UI::Xaml::Controls::MediaElement^ mediaElement) { mSampleHandler->MediaElement = mediaElement; }
 
 	private:
-		static bool smInstantiated;
 		bool mIsInitialized;
 		bool mIsActivated;
 		bool mIsStarted;

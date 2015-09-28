@@ -49,9 +49,6 @@ static void _stopMediaElement(Windows::UI::Xaml::Controls::MediaElement^ mediaEl
 }
 
 
-bool MSWinRTDis::smInstantiated = false;
-
-
 MSWinRTDisSampleHandler::MSWinRTDisSampleHandler() :
 	mSample(nullptr), mReferenceTime(0), mPixFmt(MS_YUV420P), mWidth(MS_VIDEO_SIZE_CIF_W), mHeight(MS_VIDEO_SIZE_CIF_H), mStarted(false)
 {
@@ -180,20 +177,13 @@ void MSWinRTDisSampleHandler::RequestMediaElementRestart()
 MSWinRTDis::MSWinRTDis()
 	: mIsInitialized(false), mIsActivated(false), mIsStarted(false), mBuffer(NULL), mSampleHandler(nullptr)
 {
-	if (smInstantiated) {
-		ms_error("[MSWinRTDis] A video display filter is already instantiated. A second one can not be created.");
-		return;
-	}
-
 	mSampleHandler = ref new MSWinRTDisSampleHandler();
 	mIsInitialized = true;
-	smInstantiated = true;
 }
 
 MSWinRTDis::~MSWinRTDis()
 {
 	stop();
-	smInstantiated = false;
 }
 
 int MSWinRTDis::activate()
