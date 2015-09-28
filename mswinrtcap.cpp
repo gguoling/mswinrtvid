@@ -551,6 +551,7 @@ void MSWinRTCap::registerCameras(MSWebCamManager *manager)
 		ms_web_cam_manager_prepend_cam(manager, (MSWebCam *)ms_list_nth_data(smCameras, i));
 	}
 	ms_list_free(smCameras);
+	smCameras = NULL;
 }
 
 void MSWinRTCap::detectCameras(MSWebCamManager *manager, MSWebCamDesc *desc)
