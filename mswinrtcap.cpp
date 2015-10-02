@@ -420,7 +420,7 @@ int MSWinRTCap::feed(MSFilter *f)
 	// Send queued samples
 	while ((im = mHelper->GetSample()) != NULL) {
 		ms_queue_put(f->outputs[0], im);
-		ms_average_fps_update(&mAvgFps, f->ticker->time);
+		ms_average_fps_update(&mAvgFps, (uint32_t)f->ticker->time);
 	}
 
 	return 0;
