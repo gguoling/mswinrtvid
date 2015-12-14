@@ -69,18 +69,20 @@ void MSWinRTDisSampleHandler::StartMediaElement()
 		mediaStreamSource->SampleRequested += ref new Windows::Foundation::TypedEventHandler<Windows::Media::Core::MediaStreamSource ^, Windows::Media::Core::MediaStreamSourceSampleRequestedEventArgs ^>(this, &MSWinRTDisSampleHandler::OnSampleRequested);
 		Windows::UI::Xaml::Controls::MediaElement^ mediaElement = mMediaElement;
 		bool inUIThread = mediaElement->Dispatcher->HasThreadAccess;
-		if (mediaElement->Dispatcher->HasThreadAccess) {
+		mReferenceTime = 0;
+		if (inUIThread) {
 			// We are in the UI thread
 			_startMediaElement(mediaElement, mediaStreamSource);
+			mStarted = true;
 		}
 		else {
 			// Ask the dispatcher to run this code in the UI thread
-			mediaElement->Dispatcher->RunAsync(Windows::UI::Core::CoreDispatcherPriority::Normal, ref new Windows::UI::Core::DispatchedHandler([mediaElement, mediaStreamSource]() {
+			mediaElement->Dispatcher->RunAsync(Windows::UI::Core::CoreDispatcherPriority::Normal, ref new Windows::UI::Core::DispatchedHandler([mediaElement, mediaStreamSource, this]() {
 				_startMediaElement(mediaElement, mediaStreamSource);
+				mStarted = true;
 			}));
 		}
 	}
-	mStarted = true;
 }
 
 void MSWinRTDisSampleHandler::StopMediaElement()
@@ -90,16 +92,22 @@ void MSWinRTDisSampleHandler::StopMediaElement()
 		if (mediaElement->Dispatcher->HasThreadAccess) {
 			// We are in the UI thread
 			_stopMediaElement(mediaElement, this);
+			mDeferralQueue->Clear();
+			mStarted = false;
 		}
 		else {
 			// Ask the dispatcher to run this code in the UI thread
 			mediaElement->Dispatcher->RunAsync(Windows::UI::Core::CoreDispatcherPriority::Normal, ref new Windows::UI::Core::DispatchedHandler([mediaElement, this]() {
 				_stopMediaElement(mediaElement, this);
+				mDeferralQueue->Clear();
+				mStarted = false;
 			}));
 		}
 	}
-	mDeferralQueue->Clear();
-	mStarted = false;
+	else {
+		mDeferralQueue->Clear();
+		mStarted = false;
+	}
 }
 
 void MSWinRTDisSampleHandler::Feed(Windows::Storage::Streams::IBuffer^ pBuffer)
