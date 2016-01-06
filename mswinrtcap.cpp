@@ -378,7 +378,13 @@ int MSWinRTCap::activate()
 	applyFps();
 	mIsActivated = true;
 	if (mIsActivated && (mCaptureElement != nullptr)) {
-		mCaptureElement->Source = mHelper->CaptureDevice.Get();
+		if (mCaptureElement->Dispatcher->HasThreadAccess) {
+			mCaptureElement->Source = mHelper->CaptureDevice.Get();
+		} else {
+			mCaptureElement->Dispatcher->RunAsync(Windows::UI::Core::CoreDispatcherPriority::Normal, ref new Windows::UI::Core::DispatchedHandler([this]() {
+				mCaptureElement->Source = mHelper->CaptureDevice.Get();
+			}));
+		}
 	}
 	return 0;
 }
