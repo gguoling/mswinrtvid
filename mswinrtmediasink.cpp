@@ -3,6 +3,7 @@
 #include <mediastreamer2/mscommon.h>
 
 using namespace libmswinrtvid;
+using namespace Windows::Foundation;
 
 
 //#define MSWINRTMEDIASINK_DEBUG ms_message

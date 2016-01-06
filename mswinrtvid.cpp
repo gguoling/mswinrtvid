@@ -20,7 +20,6 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 
-
 #include "mediastreamer2/msfilter.h"
 #include "mediastreamer2/msvideo.h"
 #include "mediastreamer2/mswebcam.h"
@@ -124,10 +123,10 @@ static int ms_winrtcap_set_device_orientation(MSFilter *f, void *arg) {
 
 static int ms_winrtcap_set_native_window_id(MSFilter *f, void *arg) {
 #ifdef MS2_WINDOWS_UNIVERSAL
-	MSWinRTCap *r = static_cast<MSWinRTCap *>(f->data);
+	/*MSWinRTCap *r = static_cast<MSWinRTCap *>(f->data);
 	RefToPtrProxy<Platform::Object^> *proxy = static_cast<RefToPtrProxy<Platform::Object^>*>((void *)(*((PULONG_PTR)arg)));
 	Windows::UI::Xaml::Controls::CaptureElement^ captureElement = dynamic_cast<Windows::UI::Xaml::Controls::CaptureElement^>(proxy->Ref());
-	r->setCaptureElement(captureElement);
+	r->setCaptureElement(captureElement);*/
 #endif
 	return 0;
 }
@@ -262,9 +261,9 @@ static int ms_winrtdis_set_vsize(MSFilter *f, void *arg) {
 
 static int ms_winrtdis_set_native_window_id(MSFilter *f, void *arg) {
 	MSWinRTDis *w = static_cast<MSWinRTDis *>(f->data);
-	RefToPtrProxy<Platform::Object^> *proxy = static_cast<RefToPtrProxy<Platform::Object^>*>((void *)(*((PULONG_PTR)arg)));
-	Windows::UI::Xaml::Controls::MediaElement^ mediaElement = dynamic_cast<Windows::UI::Xaml::Controls::MediaElement^>(proxy->Ref());
-	w->setMediaElement(mediaElement);
+	RefToPtrProxy<Platform::String^> *proxy = static_cast<RefToPtrProxy<Platform::String^>*>((void *)(*((PULONG_PTR)arg)));
+	Platform::String ^swapChainPanelName = proxy->Ref();
+	w->setSwapChainPanel(swapChainPanelName);
 	return 0;
 }
 

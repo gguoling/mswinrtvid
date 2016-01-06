@@ -1,5 +1,5 @@
 /*
-mswinrtdis.h
+ScopeLock.h
 
 mediastreamer2 library - modular sound and video processing and streaming
 Windows Audio Session API sound card plugin for mediastreamer2
@@ -20,37 +20,21 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 
-
 #pragma once
 
-#include <string>
-
-#include "mswinrtvid.h"
-#include "Renderer.h"
+#include <ppltasks.h>
 
 
 namespace libmswinrtvid
 {
-	class MSWinRTDis {
+	class ScopeLock
+	{
 	public:
-		MSWinRTDis();
-		virtual ~MSWinRTDis();
-
-		int activate();
-		int deactivate();
-		bool isStarted() { return mIsStarted; }
-		void start();
-		void stop();
-		int feed(MSFilter *f);
-		MSVideoSize getVideoSize();
-		void setVideoSize(MSVideoSize vs);
-		void setSwapChainPanel(Platform::String ^swapChainPanelName);
-
+		ScopeLock(HANDLE mutex);
+		~ScopeLock();
 	private:
-		bool mIsInitialized;
-		bool mIsActivated;
-		bool mIsStarted;
-		uint8_t *mBuffer;
-		MSWinRTRenderer^ mRenderer;
+		ScopeLock(const ScopeLock&);
+		const ScopeLock& operator = (const ScopeLock&) {};
+		HANDLE mMutex;
 	};
 }

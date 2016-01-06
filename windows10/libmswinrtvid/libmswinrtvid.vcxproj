@@ -35,17 +35,30 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="..\..\MediaEngineNotify.cpp" />
+    <ClCompile Include="..\..\MediaStreamSource.cpp" />
     <ClCompile Include="..\..\mswinrtcap.cpp" />
     <ClCompile Include="..\..\mswinrtdis.cpp" />
     <ClCompile Include="..\..\mswinrtmediasink.cpp" />
     <ClCompile Include="..\..\mswinrtvid.cpp" />
+    <ClCompile Include="..\..\Renderer.cpp" />
+    <ClCompile Include="..\..\SchemeHandler.cpp" />
+    <ClCompile Include="..\..\ScopeLock.cpp" />
+    <ClCompile Include="..\..\SwapChainPanelSource.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\LinkList.h" />
+    <ClInclude Include="..\..\MediaEngineNotify.h" />
+    <ClInclude Include="..\..\MediaStreamSource.h" />
     <ClInclude Include="..\..\mswinrtcap.h" />
     <ClInclude Include="..\..\mswinrtdis.h" />
     <ClInclude Include="..\..\mswinrtmediasink.h" />
     <ClInclude Include="..\..\mswinrtvid.h" />
+    <ClInclude Include="..\..\Renderer.h" />
+    <ClInclude Include="..\..\SchemeHandler.h" />
+    <ClInclude Include="..\..\ScopeLock.h" />
+    <ClInclude Include="..\..\SharedData.h" />
+    <ClInclude Include="..\..\SwapChainPanelSource.h" />
     <ClInclude Include="..\..\VideoBuffer.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
