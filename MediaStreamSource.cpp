@@ -64,8 +64,7 @@ void libmswinrtvid::MediaStreamSource::OnSampleRequested(Windows::Media::Core::M
 	mMutex.lock();
 	if (mSample == nullptr) {
 		mDeferralQueue->Append(ref new SampleRequestDeferral(request, request->GetDeferral()));
-	}
-	else {
+	} else {
 		AnswerSampleRequest(request);
 	}
 	mMutex.unlock();
@@ -96,7 +95,17 @@ void libmswinrtvid::MediaStreamSource::AnswerSampleRequest(Windows::Media::Core:
 	if (mInitialTimeStamp == 0) {
 		mInitialTimeStamp = timeStamp;
 	}
+	LONGLONG duration;
+	if (mTimeStamp == 0LL)
+	{
+		duration = (LONGLONG)((1.0 / 30.0) * 1000 * 1000 * 10);
+	}
+	else
+	{
+		duration = (timeStamp - mTimeStamp) * 10000LL;
+	}
 	mTimeStamp = timeStamp;
+	spSample->SetSampleDuration(duration);
 	// Set frame 40ms into the future
 	LONGLONG sampleTime = (mTimeStamp - mInitialTimeStamp + 40LL) * 10000LL;
 	spSample->SetSampleTime(sampleTime);
@@ -110,6 +119,7 @@ void libmswinrtvid::MediaStreamSource::AnswerSampleRequest(Windows::Media::Core:
 	spSample->AddBuffer(mediaBuffer.Get());
 	RenderFrame(mediaBuffer.Get());
 	spRequest->SetSample(spSample.Get());
+	mSample = nullptr;
 }
 
 void libmswinrtvid::MediaStreamSource::RenderFrame(IMFMediaBuffer* mediaBuffer)
