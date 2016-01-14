@@ -25,6 +25,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include <wrl.h>
 #include <robuffer.h>
 
+#include <mediastreamer2/msvideo.h>
+
 using namespace Windows::Media::Core;
 using namespace Windows::Media::MediaProperties;
 using Microsoft::WRL::ComPtr;
@@ -138,6 +140,25 @@ void libmswinrtvid::MediaStreamSource::RenderFrame(IMFMediaBuffer* mediaBuffer)
 
 	BYTE* srcRawData = nullptr;
 	sampleByteAccess->Buffer(&srcRawData);
-	memcpy(destRawData, srcRawData, destMediaBufferSize);
+	MSPicture src_pic;
+	MSPicture dst_pic;
+	ms_yuv_buf_init(&src_pic, mSample->Width, mSample->Height, mSample->Width, srcRawData);
+	ms_yuv_buf_init(&dst_pic, mSample->Width, mSample->Height, pitch, destRawData);
+	/* Copy Y plane */
+	uint8_t *src_plane = src_pic.planes[0];
+	uint8_t *dst_plane = dst_pic.planes[0];
+	for (int i = 0; i < src_pic.h; ++i) {
+		memcpy(dst_plane, src_plane, src_pic.w);
+		src_plane += src_pic.w;
+		dst_plane += pitch;
+	}
+	/* Copy U & V plane with interleaving */
+	dst_plane = dst_pic.planes[1];
+	for (int i = 0; i < src_pic.h / 2; i++) {
+		for (int j = 0; j < src_pic.w / 2; j++) {
+			dst_plane[i * pitch + j * 2] = src_pic.planes[1][i * (src_pic.w / 2) + j];
+			dst_plane[i * pitch + j * 2 + 1] = src_pic.planes[2][i * (src_pic.w / 2) + j];
+		}
+	}
 	imageBuffer->Unlock2D();
 }

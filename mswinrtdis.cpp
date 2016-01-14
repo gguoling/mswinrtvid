@@ -87,13 +87,7 @@ int MSWinRTDis::feed(MSFilter *f)
 				}
 				size = (buf.w * buf.h * 3) / 2;
 				if (!mBuffer) mBuffer = (uint8_t *)ms_malloc(size);
-				int ysize = buf.w * buf.h;
-				int usize = ysize / 4;
-				memcpy(mBuffer, buf.planes[0], ysize);
-				for (int i = 0; i < usize; i++) {
-					mBuffer[ysize + (i * 2)] = buf.planes[1][i];
-					mBuffer[ysize + (i * 2) + 1] = buf.planes[2][i];
-				}
+				memcpy(mBuffer, buf.planes[0], size);
 				Microsoft::WRL::ComPtr<VideoBuffer> spVideoBuffer = NULL;
 				Microsoft::WRL::MakeAndInitialize<VideoBuffer>(&spVideoBuffer, mBuffer, size);
 				mRenderer->Feed(VideoBuffer::GetIBuffer(spVideoBuffer), buf.w, buf.h);
