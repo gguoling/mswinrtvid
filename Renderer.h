@@ -53,6 +53,27 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 namespace libmswinrtvid
 {
+	public ref class MSWinRTExtensionManager sealed
+	{
+	public:
+		Platform::Boolean Setup();
+		Platform::Boolean RegisterUrl(Platform::String^ url, Windows::Media::Core::MediaStreamSource^ source);
+		Platform::Boolean UnregisterUrl(Platform::String^ url);
+
+		static property MSWinRTExtensionManager^ Instance
+		{
+			MSWinRTExtensionManager^ get() { return _instance; }
+		}
+
+	private:
+		MSWinRTExtensionManager();
+		~MSWinRTExtensionManager();
+
+		static MSWinRTExtensionManager^ _instance;
+		Microsoft::WRL::ComPtr<ABI::Windows::Media::IMediaExtensionManager> mMediaExtensionManager;
+		Microsoft::WRL::ComPtr<ABI::Windows::Foundation::Collections::IMap<HSTRING, IInspectable*>> mExtensionManagerProperties;
+	};
+
 	public ref class MSWinRTRenderer sealed
 		: public MediaEngineNotifyCallback
 	{
@@ -79,7 +100,6 @@ namespace libmswinrtvid
 
 	private:
 		void Close();
-		HRESULT SetupSchemeHandler();
 		HRESULT SetupDirectX();
 		HRESULT CreateDX11Device();
 		void SendSwapChainHandle(HANDLE swapChain, bool forceNewHandle);
@@ -96,13 +116,12 @@ namespace libmswinrtvid
 		HANDLE mEventAvailableEvent;
 		SharedData* mSharedData;
 		bool mUseHardware;
+		Platform::String^ mUrl;
 
 		Microsoft::WRL::ComPtr<ID3D11Device> mDevice;
 		Microsoft::WRL::ComPtr<ID3D11DeviceContext> mDx11DeviceContext;
 		Microsoft::WRL::ComPtr<IMFDXGIDeviceManager> mDxGIManager;
 		Microsoft::WRL::ComPtr<IMFMediaEngine> mMediaEngine;
 		Microsoft::WRL::ComPtr<IMFMediaEngineEx> mMediaEngineEx;
-		Microsoft::WRL::ComPtr<ABI::Windows::Media::IMediaExtensionManager> mMediaExtensionManager;
-		Microsoft::WRL::ComPtr<ABI::Windows::Foundation::Collections::IMap<HSTRING, IInspectable*>> mExtensionManagerProperties;
 	};
 }

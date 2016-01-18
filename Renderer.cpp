@@ -31,8 +31,58 @@ using namespace Microsoft::WRL::Wrappers;
 using namespace ABI::Windows::Foundation::Collections;
 
 
+MSWinRTExtensionManager^ MSWinRTExtensionManager::_instance = ref new MSWinRTExtensionManager();
+
+MSWinRTExtensionManager::MSWinRTExtensionManager()
+	: mMediaExtensionManager(nullptr), mExtensionManagerProperties(nullptr)
+{
+}
+
+MSWinRTExtensionManager::~MSWinRTExtensionManager()
+{
+}
+
+Platform::Boolean MSWinRTExtensionManager::Setup()
+{
+	if ((mMediaExtensionManager != nullptr) && (mExtensionManagerProperties != nullptr)) return true;
+
+	using Windows::Foundation::ActivateInstance;
+	HRESULT hr = ActivateInstance(HStringReference(RuntimeClass_Windows_Media_MediaExtensionManager).Get(), mMediaExtensionManager.ReleaseAndGetAddressOf());
+	if (FAILED(hr)) {
+		ms_error("MSWinRTExtensionManager::Setup: Failed to create media extension manager %x", hr);
+		return false;
+	}
+	ComPtr<IMap<HSTRING, IInspectable*>> props;
+	hr = ActivateInstance(HStringReference(RuntimeClass_Windows_Foundation_Collections_PropertySet).Get(), props.ReleaseAndGetAddressOf());
+	ComPtr<IPropertySet> propSet;
+	props.As(&propSet);
+	HStringReference clsid(L"libmswinrtvid.SchemeHandler");
+	HStringReference scheme(L"mswinrtvid:");
+	hr = mMediaExtensionManager->RegisterSchemeHandlerWithSettings(clsid.Get(), scheme.Get(), propSet.Get());
+	if (FAILED(hr)) {
+		ms_error("MSWinRTExtensionManager::Setup: RegisterSchemeHandlerWithSettings failed %x", hr);
+		return false;
+	}
+	mExtensionManagerProperties = props;
+	return true;
+}
+
+Platform::Boolean MSWinRTExtensionManager::RegisterUrl(Platform::String^ url, Windows::Media::Core::MediaStreamSource^ source)
+{
+	boolean replaced;
+	auto streamInspect = reinterpret_cast<IInspectable*>(source);
+	return mExtensionManagerProperties->Insert(HStringReference(url->Data()).Get(), streamInspect, &replaced) == S_OK;
+}
+
+Platform::Boolean MSWinRTExtensionManager::UnregisterUrl(Platform::String^ url)
+{
+	return mExtensionManagerProperties->Remove(HStringReference(url->Data()).Get()) == S_OK;
+}
+
+
+
 MSWinRTRenderer::MSWinRTRenderer() :
-	mWidth(0), mHeight(0), mMediaStreamSource(nullptr),
+	mWidth(0), mHeight(0), mMediaStreamSource(nullptr), mMediaEngine(nullptr), mUrl(nullptr),
 	mForegroundProcess(nullptr), mMemoryMapping(nullptr), mSharedData(nullptr), mLock(nullptr), mShutdownEvent(nullptr), mEventAvailableEvent(nullptr)
 {
 }
@@ -86,6 +136,16 @@ void MSWinRTRenderer::SetSwapChainPanel(Platform::String ^swapChainPanelName)
 
 void MSWinRTRenderer::Close()
 {
+	if (mMediaEngine != nullptr)
+	{
+		mMediaEngine->Shutdown();
+	}
+	if (mUrl != nullptr)
+	{
+		MSWinRTExtensionManager::Instance->UnregisterUrl(mUrl);
+		mUrl = nullptr;
+	}
+
 	if (mSharedData != nullptr)
 	{
 		UnmapViewOfFile(mSharedData);
@@ -120,7 +180,7 @@ void MSWinRTRenderer::Close()
 
 bool MSWinRTRenderer::Start()
 {
-	HRESULT hr = SetupSchemeHandler();
+	HRESULT hr = MSWinRTExtensionManager::Instance->Setup() ? S_OK : E_FAIL;
 	if (FAILED(hr)) {
 		SendErrorEvent(hr);
 		return false;
@@ -131,9 +191,7 @@ bool MSWinRTRenderer::Start()
 		return false;
 	}
 	mMediaStreamSource = MediaStreamSource::CreateMediaSource();
-	boolean replaced;
-	auto streamInspect = reinterpret_cast<IInspectable*>(mMediaStreamSource->Source);
-	std::wstring url(L"mswinrtvid://");
+	mUrl = "mswinrtvid://";
 	GUID result;
 	hr = CoCreateGuid(&result);
 	if (FAILED(hr)) {
@@ -141,24 +199,24 @@ bool MSWinRTRenderer::Start()
 		return false;
 	}
 	Platform::Guid gd(result);
-	url += gd.ToString()->Data();
-	hr = mExtensionManagerProperties->Insert(HStringReference(url.c_str()).Get(), streamInspect, &replaced);
+	mUrl += gd.ToString();
+	hr = MSWinRTExtensionManager::Instance->RegisterUrl(mUrl, mMediaStreamSource->Source) ? S_OK : E_FAIL;
 	if (FAILED(hr)) {
 		SendErrorEvent(hr);
 		return false;
 	}
 	BSTR sourceBSTR;
-	sourceBSTR = SysAllocString(url.c_str());
+	sourceBSTR = SysAllocString(mUrl->Data());
 	hr = mMediaEngine->SetSource(sourceBSTR);
 	SysFreeString(sourceBSTR);
 	if (FAILED(hr)) {
-		ms_error("SetSource failed");
+		ms_error("MSWinRTRenderer::Start: Media engine SetSource failed %x", hr);
 		SendErrorEvent(hr);
 		return false;
 	}
 	hr = mMediaEngine->Load();
 	if (FAILED(hr)) {
-		ms_error("Load failed");
+		ms_error("MSWinRTRenderer::Start: Media engine Load failed %x", hr);
 		SendErrorEvent(hr);
 		return false;
 	}
@@ -172,35 +230,12 @@ void MSWinRTRenderer::Feed(Windows::Storage::Streams::IBuffer^ pBuffer, int widt
 	}
 }
 
-HRESULT MSWinRTRenderer::SetupSchemeHandler()
-{
-	using Windows::Foundation::ActivateInstance;
-	HRESULT hr = ActivateInstance(HStringReference(RuntimeClass_Windows_Media_MediaExtensionManager).Get(), mMediaExtensionManager.ReleaseAndGetAddressOf());
-	if (FAILED(hr)) {
-		ms_error("Failed to create media extension manager");
-		return hr;
-	}
-	ComPtr<IMap<HSTRING, IInspectable*>> props;
-	hr = ActivateInstance(HStringReference(RuntimeClass_Windows_Foundation_Collections_PropertySet).Get(), props.ReleaseAndGetAddressOf());
-	ComPtr<IPropertySet> propSet;
-	props.As(&propSet);
-	HStringReference clsid(L"libmswinrtvid.SchemeHandler");
-	HStringReference scheme(L"mswinrtvid:");
-	hr = mMediaExtensionManager->RegisterSchemeHandlerWithSettings(clsid.Get(), scheme.Get(), propSet.Get());
-	if (FAILED(hr)) {
-		ms_error("RegisterSchemeHandlerWithSettings failed");
-		return hr;
-	}
-	mExtensionManagerProperties = props;
-	return S_OK;
-}
-
 HRESULT MSWinRTRenderer::SetupDirectX()
 {
 	mUseHardware = true;
 	HRESULT hr = MFStartup(MF_VERSION);
 	if (FAILED(hr)) {
-		ms_error("MFStartup failed");
+		ms_error("MSWinRTRenderer::SetupDirectX: MFStartup failed %x", hr);
 		return hr;
 	}
 	hr = CreateDX11Device();
@@ -210,29 +245,29 @@ HRESULT MSWinRTRenderer::SetupDirectX()
 	UINT resetToken;
 	hr = MFCreateDXGIDeviceManager(&resetToken, &mDxGIManager);
 	if (FAILED(hr)) {
-		ms_error("MFCreateDXGIDeviceManager failed");
+		ms_error("MSWinRTRenderer::SetupDirectX: MFCreateDXGIDeviceManager failed %x", hr);
 		return hr;
 	}
 	hr = mDxGIManager->ResetDevice(mDevice.Get(), resetToken);
 	if (FAILED(hr)) {
-		ms_error("ResetDevice failed");
+		ms_error("MSWinRTRenderer::SetupDirectX: ResetDevice failed %x", hr);
 		return hr;
 	}
 	ComPtr<IMFMediaEngineClassFactory> factory;
 	hr = CoCreateInstance(CLSID_MFMediaEngineClassFactory, nullptr, CLSCTX_ALL, IID_PPV_ARGS(&factory));
 	if (FAILED(hr)) {
-		ms_error("CoCreateInstance failed");
+		ms_error("MSWinRTRenderer::SetupDirectX: CoCreateInstance failed %x", hr);
 		return hr;
 	}
 	ComPtr<IMFAttributes> attributes;
 	hr = MFCreateAttributes(&attributes, 3);
 	if (FAILED(hr)) {
-		ms_error("MFCreateAttributes failed");
+		ms_error("MSWinRTRenderer::SetupDirectX: MFCreateAttributes failed %x", hr);
 		return hr;
 	}
 	hr = attributes->SetUnknown(MF_MEDIA_ENGINE_DXGI_MANAGER, (IUnknown*)mDxGIManager.Get());
 	if (FAILED(hr)) {
-		ms_error("attributes->SetUnknown(MF_MEDIA_ENGINE_DXGI_MANAGER, (IUnknown*)mDxGIManager.Get()) failed");
+		ms_error("MSWinRTRenderer::SetupDirectX: Set MF_MEDIA_ENGINE_DXGI_MANAGER attribute failed %x", hr);
 		return hr;
 	}
 	ComPtr<MediaEngineNotify> notify;
@@ -240,27 +275,27 @@ HRESULT MSWinRTRenderer::SetupDirectX()
 	notify->SetCallback(this);
 	hr = attributes->SetUINT32(MF_MEDIA_ENGINE_VIDEO_OUTPUT_FORMAT, DXGI_FORMAT_NV12);
 	if (FAILED(hr)) {
-		ms_error("attributes->SetUINT32(MF_MEDIA_ENGINE_VIDEO_OUTPUT_FORMAT, DXGI_FORMAT_NV12) failed");
+		ms_error("MSWinRTRenderer::SetupDirectX: Set MF_MEDIA_ENGINE_VIDEO_OUTPUT_FORMAT attribute failed %x", hr);
 		return hr;
 	}
 	hr = attributes->SetUnknown(MF_MEDIA_ENGINE_CALLBACK, (IUnknown*)notify.Get());
 	if (FAILED(hr)) {
-		ms_error("attributes->SetUnknown(MF_MEDIA_ENGINE_CALLBACK, (IUnknown*)notify.Get()) failed");
+		ms_error("MSWinRTRenderer::SetupDirectX: Set MF_MEDIA_ENGINE_CALLBACK attribute failed %x", hr);
 		return hr;
 	}
 	hr = factory->CreateInstance(MF_MEDIA_ENGINE_REAL_TIME_MODE | MF_MEDIA_ENGINE_WAITFORSTABLE_STATE, attributes.Get(), &mMediaEngine);
 	if (FAILED(hr)) {
-		ms_error("CreateInstance failed");
+		ms_error("MSWinRTRenderer::SetupDirectX: CreateInstance failed %x", hr);
 		return hr;
 	}
 	hr = mMediaEngine.Get()->QueryInterface(__uuidof(IMFMediaEngineEx), (void**)&mMediaEngineEx);
 	if (FAILED(hr)) {
-		ms_error("mMediaEngine.Get()->QueryInterface(__uuidof(IMFMediaEngineEx), (void**)&mMediaEngineEx) failed");
+		ms_error("MSWinRTRenderer::SetupDirectX: QueryInterface failed %x", hr);
 		return hr;
 	}
 	hr = mMediaEngineEx->EnableWindowlessSwapchainMode(TRUE);
 	if (FAILED(hr)) {
-		ms_error("mMediaEngineEx->EnableWindowlessSwapchainMode(TRUE) failed");
+		ms_error("MSWinRTRenderer::SetupDirectX: EnableWindowlessSwapchainMode failed %x", hr);
 		return hr;
 	}
 	mMediaEngineEx->SetRealTimeMode(TRUE);
@@ -283,14 +318,14 @@ HRESULT MSWinRTRenderer::CreateDX11Device()
 	}
 
 	if (FAILED(hr)) {
-		ms_warning("Failed to create hardware device, falling back to software");
+		ms_warning("MSWinRTRenderer::CreateDX11Device: Failed to create hardware device, falling back to software %x", hr);
 		mUseHardware = false;
 	}
 
 	if (!mUseHardware) {
 		hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, D3D11_CREATE_DEVICE_VIDEO_SUPPORT, levels, ARRAYSIZE(levels), D3D11_SDK_VERSION, &mDevice, &FeatureLevel, &mDx11DeviceContext);
 		if (FAILED(hr)) {
-			ms_error("Failed to create device");
+			ms_error("MSWinRTRenderer::CreateDX11Device: Failed to create WARP device %x", hr);
 			return hr;
 		}
 	}
@@ -299,7 +334,7 @@ HRESULT MSWinRTRenderer::CreateDX11Device()
 		ComPtr<ID3D10Multithread> multithread;
 		hr = mDevice.Get()->QueryInterface(IID_PPV_ARGS(&multithread));
 		if (FAILED(hr)) {
-			ms_error("Failed to set hardware to multithreaded");
+			ms_error("MSWinRTRenderer::CreateDX11Device: Failed to set hardware to multithreaded %x", hr);
 			return hr;
 		}
 		multithread->SetMultithreadProtected(TRUE);

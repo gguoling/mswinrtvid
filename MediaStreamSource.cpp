@@ -89,10 +89,16 @@ void libmswinrtvid::MediaStreamSource::AnswerSampleRequest(Windows::Media::Core:
 {
 	ComPtr<IMFMediaStreamSourceSampleRequest> spRequest;
 	HRESULT hr = reinterpret_cast<IInspectable*>(sampleRequest)->QueryInterface(spRequest.ReleaseAndGetAddressOf());
-	if (FAILED(hr)) return;
+	if (FAILED(hr)) {
+		ms_error("MediaStreamSource::AnswerSampleRequest: QueryInterface failed %x", hr);
+		return;
+	}
 	ComPtr<IMFSample> spSample;
 	hr = MFCreateSample(spSample.GetAddressOf());
-	if (FAILED(hr)) return;
+	if (FAILED(hr)) {
+		ms_error("MediaStreamSource::AnswerSampleRequest: MFCreateSample failed %x", hr);
+		return;
+	}
 	LONGLONG timeStamp = GetTickCount64();
 	if (mInitialTimeStamp == 0) {
 		mInitialTimeStamp = timeStamp;
@@ -117,7 +123,10 @@ void libmswinrtvid::MediaStreamSource::AnswerSampleRequest(Windows::Media::Core:
 		mVideoDesc->EncodingProperties->Height = mSample->Height;
 	}
 	hr = MFCreate2DMediaBuffer(mVideoDesc->EncodingProperties->Width, mVideoDesc->EncodingProperties->Height, 0x3231564E /* NV12 */, FALSE, mediaBuffer.GetAddressOf());
-	if (FAILED(hr)) return;
+	if (FAILED(hr)) {
+		ms_error("MediaStreamSource::AnswerSampleRequest: MFCreate2DMediaBuffer failed %x", hr);
+		return;
+	}
 	spSample->AddBuffer(mediaBuffer.Get());
 	RenderFrame(mediaBuffer.Get());
 	spRequest->SetSample(spSample.Get());
@@ -127,16 +136,28 @@ void libmswinrtvid::MediaStreamSource::AnswerSampleRequest(Windows::Media::Core:
 void libmswinrtvid::MediaStreamSource::RenderFrame(IMFMediaBuffer* mediaBuffer)
 {
 	ComPtr<IMF2DBuffer2> imageBuffer;
-	if (FAILED(mediaBuffer->QueryInterface(imageBuffer.GetAddressOf()))) return;
+	HRESULT hr = mediaBuffer->QueryInterface(imageBuffer.GetAddressOf());
+	if (FAILED(hr)) {
+		ms_error("MediaStreamSource::RenderFrame: mediaBuffer QueryInterface failed %x", hr);
+		return;
+	}
 
 	ComPtr<Windows::Storage::Streams::IBufferByteAccess> sampleByteAccess;
-	if (FAILED(reinterpret_cast<IInspectable*>(mSample->Buffer)->QueryInterface(IID_PPV_ARGS(&sampleByteAccess)))) return;
+	hr = reinterpret_cast<IInspectable*>(mSample->Buffer)->QueryInterface(IID_PPV_ARGS(&sampleByteAccess));
+	if (FAILED(hr)) {
+		ms_error("MediaStreamSource::RenderFrame: mSample->Buffer QueryInterface failed %x", hr);
+		return;
+	}
 
 	BYTE* destRawData;
 	BYTE* buffer;
 	LONG pitch;
 	DWORD destMediaBufferSize;
-	if (FAILED(imageBuffer->Lock2DSize(MF2DBuffer_LockFlags_Write, &destRawData, &pitch, &buffer, &destMediaBufferSize))) return;
+	hr = imageBuffer->Lock2DSize(MF2DBuffer_LockFlags_Write, &destRawData, &pitch, &buffer, &destMediaBufferSize);
+	if (FAILED(hr)) {
+		ms_error("MediaStreamSource::RenderFrame: Lock2DSize failed %x", hr);
+		return;
+	}
 
 	BYTE* srcRawData = nullptr;
 	sampleByteAccess->Buffer(&srcRawData);

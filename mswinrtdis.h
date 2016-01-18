@@ -47,7 +47,6 @@ namespace libmswinrtvid
 		void setSwapChainPanel(Platform::String ^swapChainPanelName);
 
 	private:
-		bool mIsInitialized;
 		bool mIsActivated;
 		bool mIsStarted;
 		uint8_t *mBuffer;

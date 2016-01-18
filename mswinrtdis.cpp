@@ -30,20 +30,19 @@ using namespace libmswinrtvid;
 
 
 MSWinRTDis::MSWinRTDis()
-	: mIsInitialized(false), mIsActivated(false), mIsStarted(false)
+	: mIsActivated(false), mIsStarted(false)
 {
 	mRenderer = ref new MSWinRTRenderer();
-	mIsInitialized = true;
 }
 
 MSWinRTDis::~MSWinRTDis()
 {
 	stop();
+	mRenderer = nullptr;
 }
 
 int MSWinRTDis::activate()
 {
-	if (!mIsInitialized) return -1;
 	mIsActivated = true;
 	return 0;
 }
