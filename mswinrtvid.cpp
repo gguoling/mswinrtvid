@@ -121,16 +121,6 @@ static int ms_winrtcap_set_device_orientation(MSFilter *f, void *arg) {
 	return 0;
 }
 
-static int ms_winrtcap_set_native_window_id(MSFilter *f, void *arg) {
-#ifdef MS2_WINDOWS_UNIVERSAL
-	/*MSWinRTCap *r = static_cast<MSWinRTCap *>(f->data);
-	RefToPtrProxy<Platform::Object^> *proxy = static_cast<RefToPtrProxy<Platform::Object^>*>((void *)(*((PULONG_PTR)arg)));
-	Windows::UI::Xaml::Controls::CaptureElement^ captureElement = dynamic_cast<Windows::UI::Xaml::Controls::CaptureElement^>(proxy->Ref());
-	r->setCaptureElement(captureElement);*/
-#endif
-	return 0;
-}
-
 static MSFilterMethod ms_winrtcap_read_methods[] = {
 	{ MS_FILTER_GET_FPS,                           ms_winrtcap_get_fps                    },
 	{ MS_FILTER_SET_FPS,                           ms_winrtcap_set_fps                    },
@@ -138,7 +128,6 @@ static MSFilterMethod ms_winrtcap_read_methods[] = {
 	{ MS_FILTER_GET_VIDEO_SIZE,                    ms_winrtcap_get_vsize                  },
 	{ MS_FILTER_SET_VIDEO_SIZE,                    ms_winrtcap_set_vsize                  },
 	{ MS_VIDEO_CAPTURE_SET_DEVICE_ORIENTATION,     ms_winrtcap_set_device_orientation     },
-	{ MS_VIDEO_DISPLAY_SET_NATIVE_WINDOW_ID,       ms_winrtcap_set_native_window_id       },
 	{ 0,                                           NULL                                   }
 };
 

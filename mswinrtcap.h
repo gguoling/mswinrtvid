@@ -45,8 +45,6 @@ namespace libmswinrtvid
 	internal:
 		MSWinRTCapHelper();
 		bool Initialize(Platform::String^ DeviceId);
-		bool StartPreview(int DeviceOrientation);
-		void StopPreview();
 		bool StartCapture(Windows::Media::MediaProperties::MediaEncodingProfile^ EncodingProfile);
 		void StopCapture();
 		void MSWinRTCapHelper::OnSampleAvailable(BYTE *buf, DWORD bufLen, LONGLONG presentationTime);
@@ -65,8 +63,6 @@ namespace libmswinrtvid
 		HANDLE mInitializationCompleted;
 		HANDLE mStartCompleted;
 		HANDLE mStopCompleted;
-		HANDLE mPreviewStartCompleted;
-		HANDLE mPreviewStopCompleted;
 		const GUID mRotationKey;
 		Platform::Agile<MediaCapture^> mCapture;
 		Windows::Foundation::EventRegistrationToken mMediaCaptureFailedEventRegistrationToken;
@@ -93,7 +89,6 @@ namespace libmswinrtvid
 
 		void OnSampleAvailable(BYTE *buf, DWORD bufLen, LONGLONG presentationTime);
 
-		void setCaptureElement(Windows::UI::Xaml::Controls::CaptureElement^ captureElement) { mCaptureElement = captureElement; }
 		void setDeviceId(Platform::String^ id) { mDeviceId = id; }
 		void setFront(bool front) { mFront = front; }
 		void setExternal(bool external) { mExternal = external; }
@@ -127,7 +122,6 @@ namespace libmswinrtvid
 		uint64_t mStartTime;
 		int mDeviceOrientation;
 		MSVideoStarter mStarter;
-		Windows::UI::Xaml::Controls::CaptureElement^ mCaptureElement;
 		Platform::String^ mDeviceId;
 		bool mFront;
 		bool mExternal;
