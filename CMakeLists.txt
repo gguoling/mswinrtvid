@@ -1,6 +1,6 @@
 ############################################################################
 # CMakeLists.txt
-# Copyright (C) 2015  Belledonne Communications, Grenoble France
+# Copyright (C) 2016  Belledonne Communications, Grenoble France
 #
 ############################################################################
 #
@@ -21,43 +21,46 @@
 ############################################################################
 
 cmake_minimum_required(VERSION 3.0)
-project(MSWP8VID CXX)
+project(MSWINRTVID CXX)
 
 
-find_package(Mediastreamer2 REQUIRED)
+if(LINPHONE_BUILDER_GROUP_EXTERNAL_SOURCE_PATH_BUILDERS)
+	include("${EP_ms2_CONFIG_DIR}/Mediastreamer2Config.cmake")
+else()
+	find_package(Mediastreamer2 REQUIRED)
+endif()
 
 
 include_directories(
 	${MEDIASTREAMER2_INCLUDE_DIRS}
 )
 
-file(GLOB SOURCE_FILES "*.h" "*.cpp")
 set(SOURCE_FILES
 	"IVideoDispatcher.h"
 	"IVideoRenderer.h"
+	"LinkList.h"
 	"mswinrtcap.cpp"
 	"mswinrtcap.h"
 	"mswinrtdis.cpp"
 	"mswinrtdis.h"
+	"mswinrtmediasink.cpp"
+	"mswinrtmediasink.h"
 	"mswinrtvid.cpp"
+	"mswinrtvid.h"
 	"VideoBuffer.h"
 )
-set(LIBS ${MEDIASTREAMER2_LIBRARIES} ws2_32)
+set(LIBS ${MEDIASTREAMER2_LIBRARIES} mfplat.lib;mfuuid.lib)
 
 add_library(mswinrtvid MODULE ${SOURCE_FILES})
 set_target_properties(mswinrtvid PROPERTIES VERSION 0)
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
 	install(FILES ${CMAKE_CURRENT_BINARY_DIR}/Debug/libmswinrtvid.pdb
-		DESTINATION bin
+		DESTINATION lib/mediastreamer/plugins
 		PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
 	)
 endif()
 set_target_properties(mswinrtvid PROPERTIES PREFIX "lib")
-target_compile_definitions(mswinrtvid PRIVATE
-	"-DWIN32_LEAN_AND_MEAN"
-	"-D_CRT_SECURE_NO_WARNINGS"
-)
-set_target_properties(mswinrtvid PROPERTIES LINK_FLAGS "/WINMDFILE:Mediastreamer2.WP8Video.winmd /OUT:${CMAKE_BUILD_TYPE}\\\$(TargetName)\$(TargetExt)")
+#set_target_properties(mswinrtvid PROPERTIES LINK_FLAGS "/WINMDFILE:Mediastreamer2.WP8Video.winmd /OUT:${CMAKE_BUILD_TYPE}\\\$(TargetName)\$(TargetExt)")
 set_target_properties(mswinrtvid PROPERTIES VS_WINRT_COMPONENT TRUE)
 target_link_libraries(mswinrtvid ${LIBS})
 
@@ -68,6 +71,6 @@ install(TARGETS mswinrtvid
 	PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
 )
 
-install(FILES "${CMAKE_CURRENT_BINARY_DIR}/Mediastreamer2.WP8Video.winmd" DESTINATION lib/mediastreamer/plugins)
+#install(FILES "${CMAKE_CURRENT_BINARY_DIR}/Mediastreamer2.WP8Video.winmd" DESTINATION lib/mediastreamer/plugins)
 
-install(FILES "VideoRenderer.cs" "VideoStreamSource.cs" DESTINATION src/mswinrtvid)
+#install(FILES "VideoRenderer.cs" "VideoStreamSource.cs" DESTINATION src/mswinrtvid)
