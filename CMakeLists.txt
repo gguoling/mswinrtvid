@@ -60,7 +60,6 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
 	)
 endif()
 set_target_properties(mswinrtvid PROPERTIES PREFIX "lib")
-#set_target_properties(mswinrtvid PROPERTIES LINK_FLAGS "/WINMDFILE:Mediastreamer2.WP8Video.winmd /OUT:${CMAKE_BUILD_TYPE}\\\$(TargetName)\$(TargetExt)")
 set_target_properties(mswinrtvid PROPERTIES VS_WINRT_COMPONENT TRUE)
 target_link_libraries(mswinrtvid ${LIBS})
 
@@ -70,7 +69,3 @@ install(TARGETS mswinrtvid
 	ARCHIVE DESTINATION lib/mediastreamer/plugins
 	PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
 )
-
-#install(FILES "${CMAKE_CURRENT_BINARY_DIR}/Mediastreamer2.WP8Video.winmd" DESTINATION lib/mediastreamer/plugins)
-
-#install(FILES "VideoRenderer.cs" "VideoStreamSource.cs" DESTINATION src/mswinrtvid)
