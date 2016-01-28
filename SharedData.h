@@ -35,9 +35,9 @@ namespace libmswinrtvid
 		DWORD backgroundProcessId;
 		HANDLE foregroundLockMutex;
 		HANDLE foregroundShutdownEvent;
+		HANDLE foregroundShutdownCompleteEvent;
 		HANDLE foregroundCommandAvailableEvent;
 		HANDLE foregroundEventAvailableEvent;
-		HANDLE backgroundSwapChainHandle;
 		HANDLE foregroundSwapChainHandle;
 		bool shutdown;
 		HRESULT error;

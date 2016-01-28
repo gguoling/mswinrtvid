@@ -82,7 +82,7 @@ Platform::Boolean MSWinRTExtensionManager::UnregisterUrl(Platform::String^ url)
 
 
 MSWinRTRenderer::MSWinRTRenderer() :
-	mWidth(0), mHeight(0), mMediaStreamSource(nullptr), mMediaEngine(nullptr), mUrl(nullptr),
+	mMediaStreamSource(nullptr), mMediaEngine(nullptr), mUrl(nullptr),
 	mForegroundProcess(nullptr), mMemoryMapping(nullptr), mSharedData(nullptr), mLock(nullptr), mShutdownEvent(nullptr), mEventAvailableEvent(nullptr)
 {
 }
@@ -126,7 +126,19 @@ void MSWinRTRenderer::SetSwapChainPanel(Platform::String ^swapChainPanelName)
 		Close();
 		throw ref new Platform::COMException(HRESULT_FROM_WIN32(error));
 	}
+	if (!DuplicateHandle(mForegroundProcess, mSharedData->foregroundShutdownCompleteEvent, GetCurrentProcess(), &mShutdownCompleteEvent, 0, TRUE, DUPLICATE_SAME_ACCESS)) {
+		DWORD error = GetLastError();
+		mLock = nullptr;
+		Close();
+		throw ref new Platform::COMException(HRESULT_FROM_WIN32(error));
+	}
 	if (!DuplicateHandle(mForegroundProcess, mSharedData->foregroundEventAvailableEvent, GetCurrentProcess(), &mEventAvailableEvent, 0, TRUE, DUPLICATE_SAME_ACCESS)) {
+		DWORD error = GetLastError();
+		mLock = nullptr;
+		Close();
+		throw ref new Platform::COMException(HRESULT_FROM_WIN32(error));
+	}
+	if (!DuplicateHandle(mForegroundProcess, mSharedData->foregroundCommandAvailableEvent, GetCurrentProcess(), &mCommandAvailableEvent, 0, TRUE, DUPLICATE_SAME_ACCESS)) {
 		DWORD error = GetLastError();
 		mLock = nullptr;
 		Close();
@@ -139,6 +151,11 @@ void MSWinRTRenderer::Close()
 	if (mMediaEngine != nullptr)
 	{
 		mMediaEngine->Shutdown();
+		mMediaEngine = nullptr;
+	}
+	if (mMediaEngineEx != nullptr)
+	{
+		mMediaEngineEx = nullptr;
 	}
 	if (mUrl != nullptr)
 	{
@@ -176,6 +193,17 @@ void MSWinRTRenderer::Close()
 		CloseHandle(mForegroundProcess);
 		mForegroundProcess = nullptr;
 	}
+	if (mShutdownCompleteEvent != nullptr)
+	{
+		SetEvent(mShutdownCompleteEvent);
+		mShutdownCompleteEvent = nullptr;
+	}
+	if (mCommandAvailableEvent != nullptr)
+	{
+		CloseHandle(mCommandAvailableEvent);
+		mCommandAvailableEvent = nullptr;
+	}
+	mSwapChainHandle.Close();
 }
 
 bool MSWinRTRenderer::Start()
@@ -226,6 +254,23 @@ bool MSWinRTRenderer::Start()
 void MSWinRTRenderer::Feed(Windows::Storage::Streams::IBuffer^ pBuffer, int width, int height)
 {
 	if (mMediaStreamSource != nullptr) {
+		bool sizeChanged = false;
+		if ((width != mFrameWidth) || (height != mFrameHeight)) {
+			mFrameWidth = width;
+			mFrameHeight = height;
+			sizeChanged = true;
+		}
+		if ((mSharedData->width != mSwapChainPanelWidth) || (mSharedData->height != mSwapChainPanelHeight)) {
+			mSwapChainPanelWidth = mSharedData->width;
+			mSwapChainPanelHeight = mSharedData->height;
+			sizeChanged = true;
+		}
+		if (sizeChanged) {
+			MFVideoNormalizedRect srcSize = { 0.f, 0.f, (float)width, (float)height };
+			RECT dstSize = { 0, 0, mSwapChainPanelWidth, mSwapChainPanelHeight };
+			MFARGB backgroundColor = { 0, 0, 0, 0 };
+			mMediaEngineEx->UpdateVideoStream(&srcSize, &dstSize, &backgroundColor);
+		}
 		mMediaStreamSource->Feed(pBuffer, width, height);
 	}
 }
@@ -254,7 +299,7 @@ HRESULT MSWinRTRenderer::SetupDirectX()
 		return hr;
 	}
 	ComPtr<IMFMediaEngineClassFactory> factory;
-	hr = CoCreateInstance(CLSID_MFMediaEngineClassFactory, nullptr, CLSCTX_ALL, IID_PPV_ARGS(&factory));
+	hr = CoCreateInstance(CLSID_MFMediaEngineClassFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&factory));
 	if (FAILED(hr)) {
 		ms_error("MSWinRTRenderer::SetupDirectX: CoCreateInstance failed %x", hr);
 		return hr;
@@ -283,7 +328,7 @@ HRESULT MSWinRTRenderer::SetupDirectX()
 		ms_error("MSWinRTRenderer::SetupDirectX: Set MF_MEDIA_ENGINE_CALLBACK attribute failed %x", hr);
 		return hr;
 	}
-	hr = factory->CreateInstance(MF_MEDIA_ENGINE_REAL_TIME_MODE | MF_MEDIA_ENGINE_WAITFORSTABLE_STATE, attributes.Get(), &mMediaEngine);
+	hr = factory->CreateInstance(MF_MEDIA_ENGINE_REAL_TIME_MODE, attributes.Get(), &mMediaEngine);
 	if (FAILED(hr)) {
 		ms_error("MSWinRTRenderer::SetupDirectX: CreateInstance failed %x", hr);
 		return hr;
@@ -298,7 +343,6 @@ HRESULT MSWinRTRenderer::SetupDirectX()
 		ms_error("MSWinRTRenderer::SetupDirectX: EnableWindowlessSwapchainMode failed %x", hr);
 		return hr;
 	}
-	mMediaEngineEx->SetRealTimeMode(TRUE);
 	return S_OK;
 }
 
@@ -308,7 +352,10 @@ HRESULT MSWinRTRenderer::CreateDX11Device()
 		D3D_FEATURE_LEVEL_11_1,
 		D3D_FEATURE_LEVEL_11_0,
 		D3D_FEATURE_LEVEL_10_1,
-		D3D_FEATURE_LEVEL_10_0
+		D3D_FEATURE_LEVEL_10_0,
+		D3D_FEATURE_LEVEL_9_3,
+		D3D_FEATURE_LEVEL_9_2,
+		D3D_FEATURE_LEVEL_9_1
 	};
 	D3D_FEATURE_LEVEL FeatureLevel;
 	HRESULT hr = S_OK;
@@ -342,27 +389,15 @@ HRESULT MSWinRTRenderer::CreateDX11Device()
 	return hr;
 }
 
-void MSWinRTRenderer::SendSwapChainHandle(HANDLE swapChain, bool forceNewHandle)
+void MSWinRTRenderer::SendSwapChainHandle(HANDLE swapChain)
 {
 	if ((swapChain == nullptr) || (swapChain == INVALID_HANDLE_VALUE)) return;
 
-	bool notify = false;
 	ScopeLock lock(mLock);
-	if (forceNewHandle) {
-		if (mSharedData->backgroundSwapChainHandle) {
-			CloseHandle(mSharedData->backgroundSwapChainHandle);
-		}
-		mSharedData->backgroundSwapChainHandle = swapChain;
-		notify = true;
-	}
-	else if (mSharedData->backgroundSwapChainHandle == nullptr) {
-		mSharedData->backgroundSwapChainHandle = swapChain;
-		notify = true;
-	}
-	if (notify) {
-		HANDLE foregroundProcess = OpenProcess(PROCESS_DUP_HANDLE, TRUE, mSharedData->foregroundProcessId);
-		DuplicateHandle(GetCurrentProcess(), swapChain, foregroundProcess, &mSharedData->foregroundSwapChainHandle, 0, TRUE, DUPLICATE_SAME_ACCESS);
-		CloseHandle(foregroundProcess);
+	mSwapChainHandle.AssignHandle(swapChain, mSharedData->foregroundProcessId);
+	HANDLE remoteHandle = mSwapChainHandle.GetRemoteHandle();
+	if (remoteHandle != mSharedData->foregroundSwapChainHandle) {
+		mSharedData->foregroundSwapChainHandle = remoteHandle;
 		SetEvent(mEventAvailableEvent);
 	}
 }
@@ -371,7 +406,7 @@ void MSWinRTRenderer::SendErrorEvent(HRESULT hr)
 {
 	ScopeLock lock(mLock);
 	mSharedData->error = hr;
-	SetEvent(mSharedData->foregroundEventAvailableEvent);
+	SetEvent(mEventAvailableEvent);
 }
 
 void MSWinRTRenderer::OnMediaEngineEvent(uint32 meEvent, uintptr_t param1, uint32 param2)
@@ -385,11 +420,11 @@ void MSWinRTRenderer::OnMediaEngineEvent(uint32 meEvent, uintptr_t param1, uint3
 	case MF_MEDIA_ENGINE_EVENT_PLAYING:
 	case MF_MEDIA_ENGINE_EVENT_FIRSTFRAMEREADY:
 		mMediaEngineEx->GetVideoSwapchainHandle(&swapChainHandle);
-		SendSwapChainHandle(swapChainHandle, false);
+		SendSwapChainHandle(swapChainHandle);
 		break;
 	case MF_MEDIA_ENGINE_EVENT_FORMATCHANGE:
 		mMediaEngineEx->GetVideoSwapchainHandle(&swapChainHandle);
-		SendSwapChainHandle(swapChainHandle, true);
+		SendSwapChainHandle(swapChainHandle);
 		break;
 	case MF_MEDIA_ENGINE_EVENT_CANPLAY:
 		hr = mMediaEngine->Play();

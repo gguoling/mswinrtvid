@@ -41,6 +41,7 @@
     <ClCompile Include="..\..\mswinrtdis.cpp" />
     <ClCompile Include="..\..\mswinrtmediasink.cpp" />
     <ClCompile Include="..\..\mswinrtvid.cpp" />
+    <ClCompile Include="..\..\RemoteHandle.cpp" />
     <ClCompile Include="..\..\Renderer.cpp" />
     <ClCompile Include="..\..\SchemeHandler.cpp" />
     <ClCompile Include="..\..\ScopeLock.cpp" />
@@ -54,6 +55,7 @@
     <ClInclude Include="..\..\mswinrtdis.h" />
     <ClInclude Include="..\..\mswinrtmediasink.h" />
     <ClInclude Include="..\..\mswinrtvid.h" />
+    <ClInclude Include="..\..\RemoteHandle.h" />
     <ClInclude Include="..\..\Renderer.h" />
     <ClInclude Include="..\..\SchemeHandler.h" />
     <ClInclude Include="..\..\ScopeLock.h" />

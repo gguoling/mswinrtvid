@@ -47,7 +47,6 @@ void libmswinrtvid::SwapChainPanelSource::Start(Windows::UI::Xaml::Controls::Swa
 	Stop();
 
 	mSwapChainPanel = swapChainPanel;
-	mSwapChainPanel->Unloaded += ref new Windows::UI::Xaml::RoutedEventHandler(this, &libmswinrtvid::SwapChainPanelSource::OnUnloaded);
 
 	HRESULT hr;
 	if ((FAILED(hr = reinterpret_cast<IUnknown*>(swapChainPanel)->QueryInterface(IID_PPV_ARGS(&mNativeSwapChainPanel)))) || (!mNativeSwapChainPanel))
@@ -66,27 +65,52 @@ void libmswinrtvid::SwapChainPanelSource::Start(Windows::UI::Xaml::Controls::Swa
 	mSharedData->foregroundProcessId = GetCurrentProcessId();
 	mSharedData->foregroundLockMutex = CreateMutex(nullptr, FALSE, nullptr);
 	mSharedData->foregroundShutdownEvent = CreateEvent(nullptr, TRUE, FALSE, nullptr);
+	mSharedData->foregroundShutdownCompleteEvent = CreateEvent(nullptr, TRUE, FALSE, nullptr);
 	mSharedData->foregroundEventAvailableEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+	mSharedData->foregroundCommandAvailableEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
 
 	GetEvents();
+
+	if ((swapChainPanel->ActualWidth > 0.0f) && (swapChainPanel->ActualHeight > 0.0f))
+	{
+		mSharedData->width = (int)swapChainPanel->ActualWidth;
+		mSharedData->height = (int)swapChainPanel->ActualHeight;
+		SetEvent(mSharedData->foregroundCommandAvailableEvent);
+	}
+	mSwapChainPanel->SizeChanged += ref new Windows::UI::Xaml::SizeChangedEventHandler(this, &libmswinrtvid::SwapChainPanelSource::OnSizeChanged);
 }
 
 void libmswinrtvid::SwapChainPanelSource::Stop()
 {
 	if (mSharedData != nullptr)
 	{
+		if (mSharedData->foregroundShutdownEvent != nullptr)
+		{
+			SetEvent(mSharedData->foregroundShutdownEvent);
+		}
+		if (mSharedData->foregroundShutdownCompleteEvent != nullptr)
+		{
+			SetEvent(mSharedData->foregroundShutdownCompleteEvent);
+		}
 		if (mSharedData->foregroundLockMutex != nullptr)
 		{
 			CloseHandle(mSharedData->foregroundLockMutex);
 		}
 		if (mSharedData->foregroundShutdownEvent != nullptr)
 		{
-			SetEvent(mSharedData->foregroundShutdownEvent);
 			CloseHandle(mSharedData->foregroundShutdownEvent);
+		}
+		if (mSharedData->foregroundShutdownCompleteEvent != nullptr)
+		{
+			CloseHandle(mSharedData->foregroundShutdownCompleteEvent);
 		}
 		if (mSharedData->foregroundEventAvailableEvent != nullptr)
 		{
 			CloseHandle(mSharedData->foregroundEventAvailableEvent);
+		}
+		if (mSharedData->foregroundCommandAvailableEvent != nullptr)
+		{
+			CloseHandle(mSharedData->foregroundCommandAvailableEvent);
 		}
 		UnmapViewOfFile(mSharedData);
 		mSharedData = nullptr;
@@ -102,18 +126,23 @@ void libmswinrtvid::SwapChainPanelSource::Stop()
 		mNativeSwapChainPanel->SetSwapChainHandle(nullptr);
 	}
 	mNativeSwapChainPanel.Reset();
+	if (mCurrentSwapChainHandle != nullptr)
+	{
+		CloseHandle(mCurrentSwapChainHandle);
+		mCurrentSwapChainHandle = nullptr;
+	}
 }
 
 IAsyncAction^ libmswinrtvid::SwapChainPanelSource::GetEvents()
 {
 	return concurrency::create_async([this]()
 	{
-		HANDLE evt[2];
+		HANDLE evt[3];
 		evt[0] = mSharedData->foregroundShutdownEvent;
 		evt[1] = mSharedData->foregroundEventAvailableEvent;
 		bool running = true;
 		HRESULT hr = S_OK;
-		HANDLE lastBackgroundSwapChainHandleUsed = nullptr;
+		HANDLE lastSwapChainHandleUsed = nullptr;
 		HANDLE backgroundProcess = nullptr;
 		HANDLE foregroundSwapChainHandle;
 		while (running)
@@ -131,21 +160,10 @@ IAsyncAction^ libmswinrtvid::SwapChainPanelSource::GetEvents()
 					hr = mSharedData->error;
 					running = false;
 				}
-				else if (mSharedData->backgroundSwapChainHandle != lastBackgroundSwapChainHandleUsed)
+				else if (mSharedData->foregroundSwapChainHandle != lastSwapChainHandleUsed)
 				{
-					lastBackgroundSwapChainHandleUsed = mSharedData->backgroundSwapChainHandle;
-					if (backgroundProcess == nullptr)
-					{
-						backgroundProcess = OpenProcess(PROCESS_DUP_HANDLE, TRUE, mSharedData->backgroundProcessId);
-						if ((backgroundProcess == nullptr) || (backgroundProcess == INVALID_HANDLE_VALUE))
-						{
-							hr = HRESULT_FROM_WIN32(GetLastError());
-							running = false;
-							ReleaseMutex(mSharedData->foregroundLockMutex);
-							break;
-						}
-					}
-					if (!DuplicateHandle(GetCurrentProcess(), mSharedData->foregroundSwapChainHandle, GetCurrentProcess(), &foregroundSwapChainHandle, 0, TRUE, DUPLICATE_SAME_ACCESS | DUPLICATE_CLOSE_SOURCE))
+					lastSwapChainHandleUsed = mSharedData->foregroundSwapChainHandle;
+					if (!DuplicateHandle(GetCurrentProcess(), mSharedData->foregroundSwapChainHandle, GetCurrentProcess(), &foregroundSwapChainHandle, 0, TRUE, DUPLICATE_SAME_ACCESS))
 					{
 						hr = HRESULT_FROM_WIN32(GetLastError());
 						running = false;
@@ -154,6 +172,7 @@ IAsyncAction^ libmswinrtvid::SwapChainPanelSource::GetEvents()
 					}
 					mSwapChainPanel->Dispatcher->RunAsync(CoreDispatcherPriority::Normal, ref new DispatchedHandler([this, foregroundSwapChainHandle]()
 					{
+						if (mNativeSwapChainPanel == nullptr) return;
 						HRESULT hr = mNativeSwapChainPanel->SetSwapChainHandle(foregroundSwapChainHandle);
 						if (FAILED(hr))
 						{
@@ -180,7 +199,12 @@ IAsyncAction^ libmswinrtvid::SwapChainPanelSource::GetEvents()
 	});
 }
 
-void libmswinrtvid::SwapChainPanelSource::OnUnloaded(Platform::Object ^sender, Windows::UI::Xaml::RoutedEventArgs ^e)
+void libmswinrtvid::SwapChainPanelSource::OnSizeChanged(Platform::Object^ sender, Windows::UI::Xaml::SizeChangedEventArgs^ e)
 {
-	Stop();
+	if (mSharedData == nullptr) return;
+	WaitForSingleObject(mSharedData->foregroundLockMutex, INFINITE);
+	mSharedData->width = (int)e->NewSize.Width;
+	mSharedData->height = (int)e->NewSize.Height;
+	SetEvent(mSharedData->foregroundCommandAvailableEvent);
+	ReleaseMutex(mSharedData->foregroundLockMutex);
 }

@@ -43,7 +43,6 @@ namespace libmswinrtvid
 		void stop();
 		int feed(MSFilter *f);
 		MSVideoSize getVideoSize();
-		void setVideoSize(MSVideoSize vs);
 		void setSwapChainPanel(Platform::String ^swapChainPanelName);
 
 	private:

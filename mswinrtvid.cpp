@@ -241,13 +241,6 @@ static int ms_winrtdis_get_vsize(MSFilter *f, void *arg) {
 	return 0;
 }
 
-static int ms_winrtdis_set_vsize(MSFilter *f, void *arg) {
-	MSWinRTDis *w = static_cast<MSWinRTDis *>(f->data);
-	MSVideoSize *vs = static_cast<MSVideoSize *>(arg);
-	w->setVideoSize(*vs);
-	return 0;
-}
-
 static int ms_winrtdis_set_native_window_id(MSFilter *f, void *arg) {
 	MSWinRTDis *w = static_cast<MSWinRTDis *>(f->data);
 	RefToPtrProxy<Platform::String^> *proxy = static_cast<RefToPtrProxy<Platform::String^>*>((void *)(*((PULONG_PTR)arg)));
@@ -258,7 +251,6 @@ static int ms_winrtdis_set_native_window_id(MSFilter *f, void *arg) {
 
 static MSFilterMethod ms_winrtdis_methods[] = {
 	{ MS_FILTER_GET_VIDEO_SIZE,              ms_winrtdis_get_vsize            },
-	{ MS_FILTER_SET_VIDEO_SIZE,              ms_winrtdis_set_vsize            },
 	{ MS_VIDEO_DISPLAY_SET_NATIVE_WINDOW_ID, ms_winrtdis_set_native_window_id },
 	{ 0,                                     NULL                             }
 };

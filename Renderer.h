@@ -48,6 +48,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "MediaEngineNotify.h"
 #include "MediaStreamSource.h"
+#include "RemoteHandle.h"
 #include "SharedData.h"
 
 
@@ -86,34 +87,37 @@ namespace libmswinrtvid
 		void Feed(Windows::Storage::Streams::IBuffer^ pBuffer, int width, int height);
 		virtual void OnMediaEngineEvent(uint32 meEvent, uintptr_t param1, uint32 param2);
 
-		property int Width
+		property int FrameWidth
 		{
-			int get() { return mWidth; }
-			void set(int value) { mWidth = value; }
+			int get() { return mFrameWidth; }
 		}
 
-		property int Height
+		property int FrameHeight
 		{
-			int get() { return mHeight; }
-			void set(int value) { mHeight = value; }
+			int get() { return mFrameHeight; }
 		}
 
 	private:
 		void Close();
 		HRESULT SetupDirectX();
 		HRESULT CreateDX11Device();
-		void SendSwapChainHandle(HANDLE swapChain, bool forceNewHandle);
+		void SendSwapChainHandle(HANDLE swapChain);
 		void SendErrorEvent(HRESULT hr);
 
-		int mWidth;
-		int mHeight;
+		int mFrameWidth;
+		int mFrameHeight;
+		int mSwapChainPanelWidth;
+		int mSwapChainPanelHeight;
 		MediaStreamSource^ mMediaStreamSource;
 
 		HANDLE mMemoryMapping;
 		HANDLE mForegroundProcess;
 		HANDLE mLock;
 		HANDLE mShutdownEvent;
+		HANDLE mShutdownCompleteEvent;
 		HANDLE mEventAvailableEvent;
+		HANDLE mCommandAvailableEvent;
+		RemoteHandle mSwapChainHandle;
 		SharedData* mSharedData;
 		bool mUseHardware;
 		Platform::String^ mUrl;

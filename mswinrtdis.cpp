@@ -76,9 +76,7 @@ int MSWinRTDis::feed(MSFilter *f)
 			int size = 0;
 			MSPicture buf;
 			if (ms_yuv_buf_init_from_mblk(&buf, im) == 0) {
-				if ((buf.w != mRenderer->Width) || (buf.h != mRenderer->Height)) {
-					mRenderer->Width = buf.w;
-					mRenderer->Height = buf.h;
+				if ((buf.w != mRenderer->FrameWidth) || (buf.h != mRenderer->FrameHeight)) {
 					if (mBuffer) {
 						ms_free(mBuffer);
 						mBuffer = NULL;
@@ -107,15 +105,9 @@ int MSWinRTDis::feed(MSFilter *f)
 MSVideoSize MSWinRTDis::getVideoSize()
 {
 	MSVideoSize vs;
-	vs.width = mRenderer->Width;
-	vs.height = mRenderer->Height;
+	vs.width = mRenderer->FrameWidth;
+	vs.height = mRenderer->FrameHeight;
 	return vs;
-}
-
-void MSWinRTDis::setVideoSize(MSVideoSize vs)
-{
-	mRenderer->Width = vs.width;
-	mRenderer->Height = vs.height;
 }
 
 void MSWinRTDis::setSwapChainPanel(Platform::String ^swapChainPanelName)

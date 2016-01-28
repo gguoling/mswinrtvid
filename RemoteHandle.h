@@ -1,5 +1,5 @@
 /*
-SwapChainPanelSource.h
+RemoteHandle.h
 
 mediastreamer2 library - modular sound and video processing and streaming
 Windows Audio Session API sound card plugin for mediastreamer2
@@ -22,28 +22,25 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #pragma once
 
-#include "SharedData.h"
+#include <ppltasks.h>
 
 namespace libmswinrtvid
 {
-	[Windows::Foundation::Metadata::WebHostHidden]
-	public ref class SwapChainPanelSource sealed
+	class RemoteHandle
 	{
 	public:
-		SwapChainPanelSource();
-		virtual ~SwapChainPanelSource();
-
-		void Start(Windows::UI::Xaml::Controls::SwapChainPanel^ swapChainPanel);
-		void Stop();
-
+		RemoteHandle();
+		~RemoteHandle();
+		RemoteHandle& AssignHandle(HANDLE localHandle, DWORD processId);
+		RemoteHandle& Close();
+		HANDLE GetLocalHandle() const;
+		HANDLE GetRemoteHandle() const;
 	private:
-		Windows::Foundation::IAsyncAction^ GetEvents();
-		void OnSizeChanged(Platform::Object^ sender, Windows::UI::Xaml::SizeChangedEventArgs^ e);
-
-		Windows::UI::Xaml::Controls::SwapChainPanel^ mSwapChainPanel;
-		Microsoft::WRL::ComPtr<ISwapChainPanelNative2> mNativeSwapChainPanel;
-		HANDLE mCurrentSwapChainHandle;
-		HANDLE mMemoryMapping;
-		SharedData* mSharedData;
+		RemoteHandle(const RemoteHandle&);
+		const RemoteHandle& operator = (const RemoteHandle&) { return *this; };
+		HANDLE mLocalHandle;
+		HANDLE mRemoteHandle;
+		DWORD mProcessId;
+		HANDLE mProcessHandle;
 	};
 }
