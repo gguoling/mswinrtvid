@@ -240,7 +240,7 @@ MSVideoSize MSWinRTCapHelper::SelectBestVideoSize(MSVideoSize vs)
 
 
 MSWinRTCap::MSWinRTCap()
-	: mIsInitialized(false), mIsActivated(false), mIsStarted(false), mFps(15), mStartTime(0), mDeviceOrientation(0)
+	: mIsInitialized(false), mIsActivated(false), mIsStarted(false), mFps(15), mStartTime(0)
 {
 	if (smInstantiated) {
 		ms_error("[MSWinRTCap] A video capture filter is already instantiated. A second one can not be created.");
@@ -334,7 +334,7 @@ float MSWinRTCap::getAverageFps()
 MSVideoSize MSWinRTCap::getVideoSize()
 {
 	MSVideoSize vs;
-	if ((mDeviceOrientation % 180) == 90) {
+	if ((mHelper->DeviceOrientation % 180) == 90) {
 		vs.width = mVideoSize.height;
 		vs.height = mVideoSize.width;
 	} else {
@@ -357,9 +357,9 @@ void MSWinRTCap::selectBestVideoSize(MSVideoSize vs)
 void MSWinRTCap::setDeviceOrientation(int degrees)
 {
 	if (mFront) {
-		mDeviceOrientation = degrees % 360;
+		mHelper->DeviceOrientation = degrees % 360;
 	} else {
-		mDeviceOrientation = (360 - degrees) % 360;
+		mHelper->DeviceOrientation = (360 - degrees) % 360;
 	}
 }
 

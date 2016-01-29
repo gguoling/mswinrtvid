@@ -56,6 +56,12 @@ namespace libmswinrtvid
 			Platform::Agile<MediaCapture^> get() { return mCapture; }
 		}
 
+		property int DeviceOrientation
+		{
+			int get() { return mDeviceOrientation; }
+			void set(int value) { mDeviceOrientation = value; }
+		}
+
 	private:
 		~MSWinRTCapHelper();
 		void OnCaptureFailed(Windows::Media::Capture::MediaCapture^ sender, Windows::Media::Capture::MediaCaptureFailedEventArgs^ errorEventArgs);
@@ -98,7 +104,7 @@ namespace libmswinrtvid
 		void setFps(float fps);
 		MSVideoSize getVideoSize();
 		void setVideoSize(MSVideoSize vs);
-		int getDeviceOrientation() { return mDeviceOrientation; }
+		int getDeviceOrientation() { return mHelper->DeviceOrientation; }
 		void setDeviceOrientation(int degrees);
 
 		static void detectCameras(MSWebCamManager *manager, MSWebCamDesc *desc);
@@ -120,7 +126,6 @@ namespace libmswinrtvid
 		MSAverageFPS mAvgFps;
 		MSVideoSize mVideoSize;
 		uint64_t mStartTime;
-		int mDeviceOrientation;
 		MSVideoStarter mStarter;
 		Platform::String^ mDeviceId;
 		bool mFront;
