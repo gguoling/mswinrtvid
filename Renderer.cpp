@@ -148,6 +148,11 @@ void MSWinRTRenderer::SetSwapChainPanel(Platform::String ^swapChainPanelName)
 
 void MSWinRTRenderer::Close()
 {
+	if (mMediaEngineNotify != nullptr)
+	{
+		mMediaEngineNotify->SetCallback(nullptr);
+		mMediaEngineNotify.Detach();
+	}
 	if (mMediaEngine != nullptr)
 	{
 		mMediaEngine->Shutdown();
@@ -161,6 +166,11 @@ void MSWinRTRenderer::Close()
 	{
 		MSWinRTExtensionManager::Instance->UnregisterUrl(mUrl);
 		mUrl = nullptr;
+	}
+	if (mMediaStreamSource != nullptr)
+	{
+		mMediaStreamSource->Stop();
+		mMediaStreamSource = nullptr;
 	}
 
 	if (mSharedData != nullptr)
@@ -251,6 +261,11 @@ bool MSWinRTRenderer::Start()
 	return true;
 }
 
+void MSWinRTRenderer::Stop()
+{
+	Close();
+}
+
 void MSWinRTRenderer::Feed(Windows::Storage::Streams::IBuffer^ pBuffer, int width, int height)
 {
 	if (mMediaStreamSource != nullptr) {
@@ -315,15 +330,14 @@ HRESULT MSWinRTRenderer::SetupDirectX()
 		ms_error("MSWinRTRenderer::SetupDirectX: Set MF_MEDIA_ENGINE_DXGI_MANAGER attribute failed %x", hr);
 		return hr;
 	}
-	ComPtr<MediaEngineNotify> notify;
-	notify = Make<MediaEngineNotify>();
-	notify->SetCallback(this);
+	mMediaEngineNotify = Make<MediaEngineNotify>();
+	mMediaEngineNotify->SetCallback(this);
 	hr = attributes->SetUINT32(MF_MEDIA_ENGINE_VIDEO_OUTPUT_FORMAT, DXGI_FORMAT_NV12);
 	if (FAILED(hr)) {
 		ms_error("MSWinRTRenderer::SetupDirectX: Set MF_MEDIA_ENGINE_VIDEO_OUTPUT_FORMAT attribute failed %x", hr);
 		return hr;
 	}
-	hr = attributes->SetUnknown(MF_MEDIA_ENGINE_CALLBACK, (IUnknown*)notify.Get());
+	hr = attributes->SetUnknown(MF_MEDIA_ENGINE_CALLBACK, (IUnknown*)mMediaEngineNotify.Get());
 	if (FAILED(hr)) {
 		ms_error("MSWinRTRenderer::SetupDirectX: Set MF_MEDIA_ENGINE_CALLBACK attribute failed %x", hr);
 		return hr;

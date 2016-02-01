@@ -96,6 +96,7 @@ namespace libmswinrtvid
 		static MediaStreamSource^ CreateMediaSource();
 
 		void Feed(Windows::Storage::Streams::IBuffer^ pBuffer, int width, int height);
+		void Stop();
 
 		property Windows::Media::Core::MediaStreamSource^ Source
 		{
@@ -116,7 +117,6 @@ namespace libmswinrtvid
 		Sample^ mSample;
 		uint64 mTimeStamp;
 		uint64 mInitialTimeStamp;
-		BYTE *mFrame;
 		std::mutex mMutex;
 	};
 }

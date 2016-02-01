@@ -63,6 +63,7 @@ void MSWinRTDis::start()
 void MSWinRTDis::stop()
 {
 	if (mIsStarted) {
+		mRenderer->Stop();
 		mIsStarted = false;
 	}
 }

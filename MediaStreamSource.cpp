@@ -85,6 +85,13 @@ void libmswinrtvid::MediaStreamSource::Feed(Windows::Storage::Streams::IBuffer^ 
 	mMutex.unlock();
 }
 
+void libmswinrtvid::MediaStreamSource::Stop()
+{
+	mMediaStreamSource = nullptr;
+	mVideoDesc = nullptr;
+	mDeferralQueue = nullptr;
+}
+
 void libmswinrtvid::MediaStreamSource::AnswerSampleRequest(Windows::Media::Core::MediaStreamSourceSampleRequest^ sampleRequest)
 {
 	ComPtr<IMFMediaStreamSourceSampleRequest> spRequest;

@@ -84,6 +84,7 @@ namespace libmswinrtvid
 
 		void SetSwapChainPanel(Platform::String ^swapChainPanelName);
 		bool Start();
+		void Stop();
 		void Feed(Windows::Storage::Streams::IBuffer^ pBuffer, int width, int height);
 		virtual void OnMediaEngineEvent(uint32 meEvent, uintptr_t param1, uint32 param2);
 
@@ -127,5 +128,6 @@ namespace libmswinrtvid
 		Microsoft::WRL::ComPtr<IMFDXGIDeviceManager> mDxGIManager;
 		Microsoft::WRL::ComPtr<IMFMediaEngine> mMediaEngine;
 		Microsoft::WRL::ComPtr<IMFMediaEngineEx> mMediaEngineEx;
+		Microsoft::WRL::ComPtr<MediaEngineNotify> mMediaEngineNotify;
 	};
 }

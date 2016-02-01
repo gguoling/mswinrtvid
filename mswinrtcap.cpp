@@ -80,6 +80,7 @@ MSWinRTCapHelper::~MSWinRTCapHelper()
 		ms_yuv_buf_allocator_free(mAllocator);
 		mAllocator = NULL;
 	}
+	mEncodingProfile = nullptr;
 	ms_mutex_destroy(&mMutex);
 }
 
