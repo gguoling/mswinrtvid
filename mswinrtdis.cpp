@@ -73,20 +73,11 @@ int MSWinRTDis::feed(MSFilter *f)
 		mblk_t *im;
 
 		if ((f->inputs[0] != NULL) && ((im = ms_queue_peek_last(f->inputs[0])) != NULL)) {
-			int size = 0;
 			MSPicture buf;
 			if (ms_yuv_buf_init_from_mblk(&buf, im) == 0) {
-				if ((buf.w != mRenderer->FrameWidth) || (buf.h != mRenderer->FrameHeight)) {
-					if (mBuffer) {
-						ms_free(mBuffer);
-						mBuffer = NULL;
-					}
-				}
-				size = (buf.w * buf.h * 3) / 2;
-				if (!mBuffer) mBuffer = (uint8_t *)ms_malloc(size);
-				memcpy(mBuffer, buf.planes[0], size);
+				ms_queue_remove(f->inputs[0], im);
 				Microsoft::WRL::ComPtr<VideoBuffer> spVideoBuffer = NULL;
-				Microsoft::WRL::MakeAndInitialize<VideoBuffer>(&spVideoBuffer, mBuffer, size);
+				Microsoft::WRL::MakeAndInitialize<VideoBuffer>(&spVideoBuffer, buf.planes[0], (int)msgdsize(im), im);
 				mRenderer->Feed(VideoBuffer::GetIBuffer(spVideoBuffer), buf.w, buf.h);
 			}
 		}

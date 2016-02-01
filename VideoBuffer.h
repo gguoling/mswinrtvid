@@ -31,6 +31,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include <robuffer.h>
 #include <windows.storage.streams.h>
 
+#include <mediastreamer2/mscommon.h>
+
 
 namespace libmswinrtvid
 {
@@ -45,16 +47,14 @@ namespace libmswinrtvid
 	{
 	public:
 		virtual ~VideoBuffer() {
-			if (mBuffer) {
-				delete[] mBuffer;
-				mBuffer = NULL;
-			}
+			freemsg(mMblk);
+			mBuffer = NULL;
 		}
 
-		STDMETHODIMP RuntimeClassInitialize(BYTE* pBuffer, UINT size) {
+		STDMETHODIMP RuntimeClassInitialize(BYTE* pBuffer, UINT size, mblk_t *mblk) {
 			mSize = size;
-			mBuffer = new BYTE[size];
-			memcpy((void*)mBuffer, (void*)pBuffer, size);
+			mBuffer = pBuffer;
+			mMblk = mblk;
 			return S_OK;
 		}
 
@@ -89,5 +89,6 @@ namespace libmswinrtvid
 	private:
 		UINT32 mSize;
 		BYTE* mBuffer;
+		mblk_t *mMblk;
 	};
 }
