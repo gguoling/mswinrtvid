@@ -1,5 +1,5 @@
 /*
-mswinrtdis.h
+MediaEngineNotify.cpp
 
 mediastreamer2 library - modular sound and video processing and streaming
 Windows Audio Session API sound card plugin for mediastreamer2
@@ -20,35 +20,26 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 
+#include "MediaEngineNotify.h"
 
-#pragma once
-
-#include <string>
-
-#include "mswinrtvid.h"
-#include "Renderer.h"
+using namespace libmswinrtvid;
 
 
-namespace libmswinrtvid
+MediaEngineNotify::~MediaEngineNotify()
 {
-	class MSWinRTDis {
-	public:
-		MSWinRTDis();
-		virtual ~MSWinRTDis();
+}
 
-		int activate();
-		int deactivate();
-		bool isStarted() { return mIsStarted; }
-		void start();
-		void stop();
-		int feed(MSFilter *f);
-		MSVideoSize getVideoSize();
-		void setSwapChainPanel(Platform::String ^swapChainPanelName);
+void MediaEngineNotify::SetCallback(MediaEngineNotifyCallback^ callback)
+{
+	_callback = callback;
+}
 
-	private:
-		bool mIsActivated;
-		bool mIsStarted;
-		uint8_t *mBuffer;
-		MSWinRTRenderer^ mRenderer;
-	};
+IFACEMETHODIMP MediaEngineNotify::EventNotify(DWORD evt, DWORD_PTR param1, DWORD param2)
+{
+	if (evt == MF_MEDIA_ENGINE_EVENT_NOTIFYSTABLESTATE) {
+		SetEvent(reinterpret_cast<HANDLE>(param1));
+	} else {
+		_callback->OnMediaEngineEvent((unsigned int)evt, param1, param2);
+	}
+	return S_OK;
 }

@@ -3,7 +3,7 @@ mswinrtdis.cpp
 
 mediastreamer2 library - modular sound and video processing and streaming
 Windows Audio Session API sound card plugin for mediastreamer2
-Copyright (C) 2010-2013 Belledonne Communications, Grenoble, France
+Copyright (C) 2010-2015 Belledonne Communications, Grenoble, France
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -20,183 +20,29 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 
+#include <wrl.h>
 
 #include "mswinrtdis.h"
 #include "VideoBuffer.h"
 
+
 using namespace libmswinrtvid;
-using namespace Microsoft::WRL;
-using namespace Windows::Foundation;
-using namespace Windows::Media::Core;
-using namespace Windows::Media::MediaProperties;
-
-
-//#define MSWINRTDIS_DEBUG
-
-
-static void _startMediaElement(Windows::UI::Xaml::Controls::MediaElement^ mediaElement, Windows::Media::Core::MediaStreamSource^ mediaStreamSource)
-{
-	ms_message("[MSWinRTDis] Play MediaElement");
-	mediaElement->RealTimePlayback = true;
-	mediaElement->SetMediaStreamSource(mediaStreamSource);
-	mediaElement->Play();
-}
-
-static void _stopMediaElement(Windows::UI::Xaml::Controls::MediaElement^ mediaElement, MSWinRTDisSampleHandler^ sampleHandler)
-{
-	ms_message("[MSWinRTDis] Stop MediaElement");
-	mediaElement->Stop();
-}
-
-
-MSWinRTDisSampleHandler::MSWinRTDisSampleHandler() :
-	mSample(nullptr), mReferenceTime(0), mPixFmt(MS_YUV420P), mWidth(MS_VIDEO_SIZE_CIF_W), mHeight(MS_VIDEO_SIZE_CIF_H), mStarted(false)
-{
-	mDeferralQueue = ref new Platform::Collections::Vector<MSWinRTDisDeferral^>();
-}
-
-MSWinRTDisSampleHandler::~MSWinRTDisSampleHandler()
-{
-}
-
-void MSWinRTDisSampleHandler::StartMediaElement()
-{
-	if (mMediaElement != nullptr) {
-		VideoEncodingProperties^ videoEncodingProperties;
-		videoEncodingProperties = VideoEncodingProperties::CreateUncompressed(MediaEncodingSubtypes::Nv12, this->Width, this->Height);
-		VideoStreamDescriptor^ videoStreamDescriptor = ref new VideoStreamDescriptor(videoEncodingProperties);
-		MediaStreamSource^ mediaStreamSource = ref new MediaStreamSource(videoStreamDescriptor);
-		mediaStreamSource->SampleRequested += ref new Windows::Foundation::TypedEventHandler<Windows::Media::Core::MediaStreamSource ^, Windows::Media::Core::MediaStreamSourceSampleRequestedEventArgs ^>(this, &MSWinRTDisSampleHandler::OnSampleRequested);
-		Windows::UI::Xaml::Controls::MediaElement^ mediaElement = mMediaElement;
-		bool inUIThread = mediaElement->Dispatcher->HasThreadAccess;
-		mReferenceTime = 0;
-		if (inUIThread) {
-			// We are in the UI thread
-			_startMediaElement(mediaElement, mediaStreamSource);
-			mStarted = true;
-		}
-		else {
-			// Ask the dispatcher to run this code in the UI thread
-			mediaElement->Dispatcher->RunAsync(Windows::UI::Core::CoreDispatcherPriority::Normal, ref new Windows::UI::Core::DispatchedHandler([mediaElement, mediaStreamSource, this]() {
-				_startMediaElement(mediaElement, mediaStreamSource);
-				mStarted = true;
-			}));
-		}
-	}
-}
-
-void MSWinRTDisSampleHandler::StopMediaElement()
-{
-	if (mMediaElement != nullptr) {
-		Windows::UI::Xaml::Controls::MediaElement^ mediaElement = mMediaElement;
-		if (mediaElement->Dispatcher->HasThreadAccess) {
-			// We are in the UI thread
-			_stopMediaElement(mediaElement, this);
-			mDeferralQueue->Clear();
-			mStarted = false;
-		}
-		else {
-			// Ask the dispatcher to run this code in the UI thread
-			mediaElement->Dispatcher->RunAsync(Windows::UI::Core::CoreDispatcherPriority::Normal, ref new Windows::UI::Core::DispatchedHandler([mediaElement, this]() {
-				_stopMediaElement(mediaElement, this);
-				mDeferralQueue->Clear();
-				mStarted = false;
-			}));
-		}
-	}
-	else {
-		mDeferralQueue->Clear();
-		mStarted = false;
-	}
-}
-
-void MSWinRTDisSampleHandler::Feed(Windows::Storage::Streams::IBuffer^ pBuffer)
-{
-	mMutex.lock();
-	if (!mStarted) {
-		StartMediaElement();
-	}
-	mSample = pBuffer;
-	if (mDeferralQueue->Size > 0) {
-#ifdef MSWINRTDIS_DEBUG
-		ms_message("[MSWinRTDis] Feed answer deferral");
-#endif
-		MSWinRTDisDeferral^ deferral = mDeferralQueue->GetAt(0);
-		mDeferralQueue->RemoveAt(0);
-		AnswerSampleRequest(deferral->Request);
-		deferral->Deferral->Complete();
-	}
-#ifdef MSWINRTDIS_DEBUG
-	else {
-		ms_message("[MSWinRTDis] Feed");
-	}
-#endif
-	mMutex.unlock();
-}
-
-void MSWinRTDisSampleHandler::OnSampleRequested(Windows::Media::Core::MediaStreamSource^ sender, Windows::Media::Core::MediaStreamSourceSampleRequestedEventArgs^ args)
-{
-	MediaStreamSourceSampleRequest^ request = args->Request;
-	VideoStreamDescriptor^ videoStreamDescriptor = dynamic_cast<VideoStreamDescriptor^>(request->StreamDescriptor);
-	if (videoStreamDescriptor == nullptr) {
-		ms_warning("[MSWinRTDis] OnSampleRequested not for a video stream!");
-		return;
-	}
-	mMutex.lock();
-	if (mSample == nullptr) {
-#ifdef MSWINRTDIS_DEBUG
-		ms_message("[MSWinRTDis] OnSampleRequested defer");
-#endif
-		mDeferralQueue->Append(ref new MSWinRTDisDeferral(request, request->GetDeferral()));
-	} else {
-#ifdef MSWINRTDIS_DEBUG
-		ms_message("[MSWinRTDis] OnSampleRequested answer");
-#endif
-		AnswerSampleRequest(request);
-	}
-	mMutex.unlock();
-}
-
-void MSWinRTDisSampleHandler::AnswerSampleRequest(Windows::Media::Core::MediaStreamSourceSampleRequest^ sampleRequest)
-{
-	TimeSpan ts;
-	UINT64 CurrentTime = GetTickCount64() * 10000LL;
-	if (mReferenceTime == 0) {
-		mReferenceTime = CurrentTime;
-	}
-	ts.Duration = CurrentTime - mReferenceTime;
-	sampleRequest->Sample = MediaStreamSample::CreateFromBuffer(mSample, ts);
-	mSample = nullptr;
-}
-
-void MSWinRTDisSampleHandler::RequestMediaElementRestart()
-{
-	mMutex.lock();
-	ms_message("[MSWinRTDis] RequestMediaElementRestart");
-	if (mReferenceTime != 0) {
-		StopMediaElement();
-		mReferenceTime = 0;
-	}
-	mMutex.unlock();
-}
-
 
 
 MSWinRTDis::MSWinRTDis()
-	: mIsInitialized(false), mIsActivated(false), mIsStarted(false), mBuffer(NULL), mSampleHandler(nullptr)
+	: mIsActivated(false), mIsStarted(false)
 {
-	mSampleHandler = ref new MSWinRTDisSampleHandler();
-	mIsInitialized = true;
+	mRenderer = ref new MSWinRTRenderer();
 }
 
 MSWinRTDis::~MSWinRTDis()
 {
 	stop();
+	mRenderer = nullptr;
 }
 
 int MSWinRTDis::activate()
 {
-	if (!mIsInitialized) return -1;
 	mIsActivated = true;
 	return 0;
 }
@@ -210,15 +56,15 @@ int MSWinRTDis::deactivate()
 void MSWinRTDis::start()
 {
 	if (!mIsStarted && mIsActivated) {
-		mIsStarted = true;
+		mIsStarted = mRenderer->Start();
 	}
 }
 
 void MSWinRTDis::stop()
 {
 	if (mIsStarted) {
+		mRenderer->Stop();
 		mIsStarted = false;
-		mSampleHandler->StopMediaElement();
 	}
 }
 
@@ -228,30 +74,12 @@ int MSWinRTDis::feed(MSFilter *f)
 		mblk_t *im;
 
 		if ((f->inputs[0] != NULL) && ((im = ms_queue_peek_last(f->inputs[0])) != NULL)) {
-			int size = 0;
 			MSPicture buf;
 			if (ms_yuv_buf_init_from_mblk(&buf, im) == 0) {
-				if ((buf.w != mSampleHandler->Width) || (buf.h != mSampleHandler->Height)) {
-					mSampleHandler->Width = buf.w;
-					mSampleHandler->Height = buf.h;
-					mSampleHandler->RequestMediaElementRestart();
-					if (mBuffer) {
-						ms_free(mBuffer);
-						mBuffer = NULL;
-					}
-				}
-				size = (buf.w * buf.h * 3) / 2;
-				if (!mBuffer) mBuffer = (uint8_t *)ms_malloc(size);
-				int ysize = buf.w * buf.h;
-				int usize = ysize / 4;
-				memcpy(mBuffer, buf.planes[0], ysize);
-				for (int i = 0; i < usize; i++) {
-					mBuffer[ysize + (i * 2)] = buf.planes[1][i];
-					mBuffer[ysize + (i * 2) + 1] = buf.planes[2][i];
-				}
-				ComPtr<VideoBuffer> spVideoBuffer = NULL;
-				MakeAndInitialize<VideoBuffer>(&spVideoBuffer, mBuffer, size);
-				mSampleHandler->Feed(VideoBuffer::GetIBuffer(spVideoBuffer));
+				ms_queue_remove(f->inputs[0], im);
+				Microsoft::WRL::ComPtr<VideoBuffer> spVideoBuffer = NULL;
+				Microsoft::WRL::MakeAndInitialize<VideoBuffer>(&spVideoBuffer, buf.planes[0], (int)msgdsize(im), im);
+				mRenderer->Feed(VideoBuffer::GetIBuffer(spVideoBuffer), buf.w, buf.h);
 			}
 		}
 	}
@@ -269,13 +97,12 @@ int MSWinRTDis::feed(MSFilter *f)
 MSVideoSize MSWinRTDis::getVideoSize()
 {
 	MSVideoSize vs;
-	vs.width = mSampleHandler->Width;
-	vs.height = mSampleHandler->Height;
+	vs.width = mRenderer->FrameWidth;
+	vs.height = mRenderer->FrameHeight;
 	return vs;
 }
 
-void MSWinRTDis::setVideoSize(MSVideoSize vs)
+void MSWinRTDis::setSwapChainPanel(Platform::String ^swapChainPanelName)
 {
-	mSampleHandler->Width = vs.width;
-	mSampleHandler->Height = vs.height;
+	mRenderer->SetSwapChainPanel(swapChainPanelName);
 }

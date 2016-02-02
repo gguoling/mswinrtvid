@@ -20,7 +20,6 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 
-
 #include "mediastreamer2/msfilter.h"
 #include "mediastreamer2/msvideo.h"
 #include "mediastreamer2/mswebcam.h"
@@ -122,16 +121,6 @@ static int ms_winrtcap_set_device_orientation(MSFilter *f, void *arg) {
 	return 0;
 }
 
-static int ms_winrtcap_set_native_window_id(MSFilter *f, void *arg) {
-#ifdef MS2_WINDOWS_UNIVERSAL
-	MSWinRTCap *r = static_cast<MSWinRTCap *>(f->data);
-	RefToPtrProxy<Platform::Object^> *proxy = static_cast<RefToPtrProxy<Platform::Object^>*>((void *)(*((PULONG_PTR)arg)));
-	Windows::UI::Xaml::Controls::CaptureElement^ captureElement = dynamic_cast<Windows::UI::Xaml::Controls::CaptureElement^>(proxy->Ref());
-	r->setCaptureElement(captureElement);
-#endif
-	return 0;
-}
-
 static MSFilterMethod ms_winrtcap_read_methods[] = {
 	{ MS_FILTER_GET_FPS,                           ms_winrtcap_get_fps                    },
 	{ MS_FILTER_SET_FPS,                           ms_winrtcap_set_fps                    },
@@ -139,7 +128,6 @@ static MSFilterMethod ms_winrtcap_read_methods[] = {
 	{ MS_FILTER_GET_VIDEO_SIZE,                    ms_winrtcap_get_vsize                  },
 	{ MS_FILTER_SET_VIDEO_SIZE,                    ms_winrtcap_set_vsize                  },
 	{ MS_VIDEO_CAPTURE_SET_DEVICE_ORIENTATION,     ms_winrtcap_set_device_orientation     },
-	{ MS_VIDEO_DISPLAY_SET_NATIVE_WINDOW_ID,       ms_winrtcap_set_native_window_id       },
 	{ 0,                                           NULL                                   }
 };
 
@@ -185,7 +173,8 @@ MS_FILTER_DESC_EXPORT(ms_winrtcap_read_desc)
 static void ms_winrtcap_detect(MSWebCamManager *m);
 
 static MSFilter *ms_winrtcap_create_reader(MSWebCam *cam) {
-	MSFilter *f = ms_filter_new_from_desc(&ms_winrtcap_read_desc);
+	MSFactory *factory = ms_web_cam_get_factory(cam);
+	MSFilter *f = ms_factory_create_filter_from_desc(factory, &ms_winrtcap_read_desc);
 	MSWinRTCap *r = static_cast<MSWinRTCap *>(f->data);
 	WinRTWebcam* winrtcam = static_cast<WinRTWebcam *>(cam->data);
 	r->setDeviceId(ref new Platform::String(winrtcam->id));
@@ -253,24 +242,16 @@ static int ms_winrtdis_get_vsize(MSFilter *f, void *arg) {
 	return 0;
 }
 
-static int ms_winrtdis_set_vsize(MSFilter *f, void *arg) {
-	MSWinRTDis *w = static_cast<MSWinRTDis *>(f->data);
-	MSVideoSize *vs = static_cast<MSVideoSize *>(arg);
-	w->setVideoSize(*vs);
-	return 0;
-}
-
 static int ms_winrtdis_set_native_window_id(MSFilter *f, void *arg) {
 	MSWinRTDis *w = static_cast<MSWinRTDis *>(f->data);
-	RefToPtrProxy<Platform::Object^> *proxy = static_cast<RefToPtrProxy<Platform::Object^>*>((void *)(*((PULONG_PTR)arg)));
-	Windows::UI::Xaml::Controls::MediaElement^ mediaElement = dynamic_cast<Windows::UI::Xaml::Controls::MediaElement^>(proxy->Ref());
-	w->setMediaElement(mediaElement);
+	RefToPtrProxy<Platform::String^> *proxy = static_cast<RefToPtrProxy<Platform::String^>*>((void *)(*((PULONG_PTR)arg)));
+	Platform::String ^swapChainPanelName = proxy->Ref();
+	w->setSwapChainPanel(swapChainPanelName);
 	return 0;
 }
 
 static MSFilterMethod ms_winrtdis_methods[] = {
 	{ MS_FILTER_GET_VIDEO_SIZE,              ms_winrtdis_get_vsize            },
-	{ MS_FILTER_SET_VIDEO_SIZE,              ms_winrtdis_set_vsize            },
 	{ MS_VIDEO_DISPLAY_SET_NATIVE_WINDOW_ID, ms_winrtdis_set_native_window_id },
 	{ 0,                                     NULL                             }
 };
@@ -311,10 +292,10 @@ MS_FILTER_DESC_EXPORT(ms_winrtdis_desc)
 
 
 
-extern "C" __declspec(dllexport) void libmswinrtvid_init(void) {
-	MSWebCamManager *manager = ms_web_cam_manager_get();
+extern "C" __declspec(dllexport) void libmswinrtvid_init(MSFactory *factory) {
+	MSWebCamManager *manager = ms_factory_get_web_cam_manager(factory);
 	ms_web_cam_manager_register_desc(manager, &ms_winrtcap_desc);
-	ms_filter_register(&ms_winrtcap_read_desc);
-	ms_filter_register(&ms_winrtdis_desc);
+	ms_factory_register_filter(factory, &ms_winrtcap_read_desc);
+	ms_factory_register_filter(factory, &ms_winrtdis_desc);
 	ms_message("libmswinrtvid plugin loaded");
 }

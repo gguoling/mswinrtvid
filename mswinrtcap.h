@@ -3,7 +3,7 @@ mswinrtcap.h
 
 mediastreamer2 library - modular sound and video processing and streaming
 Windows Audio Session API sound card plugin for mediastreamer2
-Copyright (C) 2010-2013 Belledonne Communications, Grenoble, France
+Copyright (C) 2010-2015 Belledonne Communications, Grenoble, France
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -45,8 +45,6 @@ namespace libmswinrtvid
 	internal:
 		MSWinRTCapHelper();
 		bool Initialize(Platform::String^ DeviceId);
-		bool StartPreview(int DeviceOrientation);
-		void StopPreview();
 		bool StartCapture(Windows::Media::MediaProperties::MediaEncodingProfile^ EncodingProfile);
 		void StopCapture();
 		void MSWinRTCapHelper::OnSampleAvailable(BYTE *buf, DWORD bufLen, LONGLONG presentationTime);
@@ -58,6 +56,12 @@ namespace libmswinrtvid
 			Platform::Agile<MediaCapture^> get() { return mCapture; }
 		}
 
+		property int DeviceOrientation
+		{
+			int get() { return mDeviceOrientation; }
+			void set(int value) { mDeviceOrientation = value; }
+		}
+
 	private:
 		~MSWinRTCapHelper();
 		void OnCaptureFailed(Windows::Media::Capture::MediaCapture^ sender, Windows::Media::Capture::MediaCaptureFailedEventArgs^ errorEventArgs);
@@ -65,8 +69,6 @@ namespace libmswinrtvid
 		HANDLE mInitializationCompleted;
 		HANDLE mStartCompleted;
 		HANDLE mStopCompleted;
-		HANDLE mPreviewStartCompleted;
-		HANDLE mPreviewStopCompleted;
 		const GUID mRotationKey;
 		Platform::Agile<MediaCapture^> mCapture;
 		Windows::Foundation::EventRegistrationToken mMediaCaptureFailedEventRegistrationToken;
@@ -93,7 +95,6 @@ namespace libmswinrtvid
 
 		void OnSampleAvailable(BYTE *buf, DWORD bufLen, LONGLONG presentationTime);
 
-		void setCaptureElement(Windows::UI::Xaml::Controls::CaptureElement^ captureElement) { mCaptureElement = captureElement; }
 		void setDeviceId(Platform::String^ id) { mDeviceId = id; }
 		void setFront(bool front) { mFront = front; }
 		void setExternal(bool external) { mExternal = external; }
@@ -103,7 +104,7 @@ namespace libmswinrtvid
 		void setFps(float fps);
 		MSVideoSize getVideoSize();
 		void setVideoSize(MSVideoSize vs);
-		int getDeviceOrientation() { return mDeviceOrientation; }
+		int getDeviceOrientation() { return mHelper->DeviceOrientation; }
 		void setDeviceOrientation(int degrees);
 
 		static void detectCameras(MSWebCamManager *manager, MSWebCamDesc *desc);
@@ -125,9 +126,7 @@ namespace libmswinrtvid
 		MSAverageFPS mAvgFps;
 		MSVideoSize mVideoSize;
 		uint64_t mStartTime;
-		int mDeviceOrientation;
 		MSVideoStarter mStarter;
-		Windows::UI::Xaml::Controls::CaptureElement^ mCaptureElement;
 		Platform::String^ mDeviceId;
 		bool mFront;
 		bool mExternal;

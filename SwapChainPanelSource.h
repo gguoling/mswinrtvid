@@ -1,5 +1,5 @@
 /*
-mswinrtdis.h
+SwapChainPanelSource.h
 
 mediastreamer2 library - modular sound and video processing and streaming
 Windows Audio Session API sound card plugin for mediastreamer2
@@ -20,35 +20,30 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 
-
 #pragma once
 
-#include <string>
-
-#include "mswinrtvid.h"
-#include "Renderer.h"
-
+#include "SharedData.h"
 
 namespace libmswinrtvid
 {
-	class MSWinRTDis {
+	[Windows::Foundation::Metadata::WebHostHidden]
+	public ref class SwapChainPanelSource sealed
+	{
 	public:
-		MSWinRTDis();
-		virtual ~MSWinRTDis();
+		SwapChainPanelSource();
+		virtual ~SwapChainPanelSource();
 
-		int activate();
-		int deactivate();
-		bool isStarted() { return mIsStarted; }
-		void start();
-		void stop();
-		int feed(MSFilter *f);
-		MSVideoSize getVideoSize();
-		void setSwapChainPanel(Platform::String ^swapChainPanelName);
+		void Start(Windows::UI::Xaml::Controls::SwapChainPanel^ swapChainPanel);
+		void Stop();
 
 	private:
-		bool mIsActivated;
-		bool mIsStarted;
-		uint8_t *mBuffer;
-		MSWinRTRenderer^ mRenderer;
+		Windows::Foundation::IAsyncAction^ GetEvents();
+		void OnSizeChanged(Platform::Object^ sender, Windows::UI::Xaml::SizeChangedEventArgs^ e);
+
+		Windows::UI::Xaml::Controls::SwapChainPanel^ mSwapChainPanel;
+		Microsoft::WRL::ComPtr<ISwapChainPanelNative2> mNativeSwapChainPanel;
+		HANDLE mCurrentSwapChainHandle;
+		HANDLE mMemoryMapping;
+		SharedData* mSharedData;
 	};
 }

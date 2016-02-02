@@ -20,7 +20,6 @@
 
 using namespace Platform;
 using namespace Microsoft::WRL;
-using namespace Windows::Foundation;
 using namespace Windows::Foundation::Collections;
 using namespace Windows::Storage::Streams;
 using namespace Windows::Networking;

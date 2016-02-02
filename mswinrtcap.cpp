@@ -3,7 +3,7 @@ mswinrtcap.cpp
 
 mediastreamer2 library - modular sound and video processing and streaming
 Windows Audio Session API sound card plugin for mediastreamer2
-Copyright (C) 2010-2013 Belledonne Communications, Grenoble, France
+Copyright (C) 2010-2015 Belledonne Communications, Grenoble, France
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -43,11 +43,6 @@ MSWinRTCapHelper::MSWinRTCapHelper() :
 		ms_error("[MSWinRTCap] Could not create initialization event [%i]", GetLastError());
 		return;
 	}
-	mPreviewStartCompleted = CreateEventEx(NULL, L"Local\\MSWinRTCapPreviewStart", 0, EVENT_ALL_ACCESS);
-	if (!mPreviewStartCompleted) {
-		ms_error("[MSWinRTCap] Could not create preview start event [%i]", GetLastError());
-		return;
-	}
 	mStartCompleted = CreateEventEx(NULL, L"Local\\MSWinRTCapStart", 0, EVENT_ALL_ACCESS);
 	if (!mStartCompleted) {
 		ms_error("[MSWinRTCap] Could not create start event [%i]", GetLastError());
@@ -56,11 +51,6 @@ MSWinRTCapHelper::MSWinRTCapHelper() :
 	mStopCompleted = CreateEventEx(NULL, L"Local\\MSWinRTCapStop", 0, EVENT_ALL_ACCESS);
 	if (!mStopCompleted) {
 		ms_error("[MSWinRTCap] Could not create stop event [%i]", GetLastError());
-		return;
-	}
-	mPreviewStopCompleted = CreateEventEx(NULL, L"Local\\MSWinRTCapPreviewStop", 0, EVENT_ALL_ACCESS);
-	if (!mPreviewStopCompleted) {
-		ms_error("[MSWinRTCap] Could not create preview stop event [%i]", GetLastError());
 		return;
 	}
 
@@ -74,17 +64,9 @@ MSWinRTCapHelper::~MSWinRTCapHelper()
 	if (mCapture.Get() != nullptr) {
 		mCapture->Failed -= mMediaCaptureFailedEventRegistrationToken;
 	}
-	if (mPreviewStopCompleted) {
-		CloseHandle(mPreviewStopCompleted);
-		mPreviewStopCompleted = NULL;
-	}
 	if (mStopCompleted) {
 		CloseHandle(mStopCompleted);
 		mStopCompleted = NULL;
-	}
-	if (mPreviewStartCompleted) {
-		CloseHandle(mPreviewStartCompleted);
-		mPreviewStartCompleted = NULL;
 	}
 	if (mStartCompleted) {
 		CloseHandle(mStartCompleted);
@@ -98,6 +80,7 @@ MSWinRTCapHelper::~MSWinRTCapHelper()
 		ms_yuv_buf_allocator_free(mAllocator);
 		mAllocator = NULL;
 	}
+	mEncodingProfile = nullptr;
 	ms_mutex_destroy(&mMutex);
 }
 
@@ -136,90 +119,6 @@ bool MSWinRTCapHelper::Initialize(Platform::String^ DeviceId)
 
 	WaitForSingleObjectEx(mInitializationCompleted, INFINITE, FALSE);
 	return isInitialized;
-}
-
-bool MSWinRTCapHelper::StartPreview(int DeviceOrientation)
-{
-	bool isStarted = false;
-	mDeviceOrientation = DeviceOrientation;
-	try {
-		IAsyncAction^ previewAction = mCapture->StartPreviewAsync();
-		previewAction->Completed = ref new AsyncActionCompletedHandler([this, &isStarted](IAsyncAction^ asyncAction, Windows::Foundation::AsyncStatus asyncStatus) {
-			IAsyncAction^ previewPropertiesAction = nullptr;
-			IMediaEncodingProperties^ props = nullptr;
-			switch (asyncStatus) {
-			case Windows::Foundation::AsyncStatus::Completed:
-				ms_message("[MSWinRTCap] StartPreviewAsync completed");
-				props = mCapture->VideoDeviceController->GetMediaStreamProperties(Capture::MediaStreamType::VideoPreview);
-				props->Properties->Insert(mRotationKey, mDeviceOrientation);
-				try {
-					previewPropertiesAction = mCapture->SetEncodingPropertiesAsync(Capture::MediaStreamType::VideoPreview, props, nullptr);
-					previewPropertiesAction->Completed = ref new AsyncActionCompletedHandler([this, &isStarted](IAsyncAction^ asyncAction, Windows::Foundation::AsyncStatus asyncStatus) {
-						isStarted = true;
-						switch (asyncStatus) {
-						case Windows::Foundation::AsyncStatus::Completed:
-							ms_message("[MSWinRTCap] SetEncodingPropertiesAsync completed");
-							break;
-						case Windows::Foundation::AsyncStatus::Canceled:
-							ms_error("[MSWinRTCap] SetEncodingPropertiesAsync has been cancelled");
-							break;
-						case Windows::Foundation::AsyncStatus::Error:
-						{
-							int res = asyncAction->ErrorCode.Value;
-							ms_error("[MSWinRTCap] SetEncodingPropertiesAsync failed [0x%x]", res);
-						}
-						break;
-						default:
-							break;
-						}
-						SetEvent(mPreviewStartCompleted);
-					});
-				} catch (Exception^ e) {
-					ms_error("[MSWinRTCap] StartPreviewAsync exception 0x%x", e->HResult);
-					// Apparently, sometimes the preview is not correctly stopped, try again...
-					StopPreview();
-					SetEvent(mPreviewStartCompleted);
-				}
-				break;
-			case Windows::Foundation::AsyncStatus::Canceled:
-				ms_error("[MSWinRTCap] StartPreviewAsync has been cancelled");
-				SetEvent(mPreviewStartCompleted);
-				break;
-			case Windows::Foundation::AsyncStatus::Error:
-			{
-				int res = asyncAction->ErrorCode.Value;
-				ms_error("[MSWinRTCap] StartPreviewAsync failed [0x%x]", res);
-				SetEvent(mPreviewStartCompleted);
-			}
-			break;
-			default:
-				SetEvent(mPreviewStartCompleted);
-				break;
-			}
-		});
-		WaitForSingleObjectEx(mPreviewStartCompleted, INFINITE, FALSE);
-	}
-	catch (Exception^ e) {
-		ms_error("[MSWinRTCap] SetEncodingPropertiesAsync exception 0x%x", e->HResult);
-		// Apparently, sometimes the preview is not correctly stopped, try again...
-		StopPreview();
-	}
-	return isStarted;
-}
-
-void MSWinRTCapHelper::StopPreview()
-{
-	IAsyncAction^ action = mCapture->StopPreviewAsync();
-	action->Completed = ref new AsyncActionCompletedHandler([this](IAsyncAction^ asyncAction, Windows::Foundation::AsyncStatus asyncStatus) {
-		if (asyncStatus == Windows::Foundation::AsyncStatus::Completed) {
-			ms_message("[MSWinRTCap] StopPreviewAsync completed");
-		}
-		else {
-			ms_message("[MSWinRTCap] StopPreviewAsync failed");
-		}
-		SetEvent(mPreviewStopCompleted);
-	});
-	WaitForSingleObjectEx(mPreviewStopCompleted, INFINITE, FALSE);
 }
 
 bool MSWinRTCapHelper::StartCapture(MediaEncodingProfile^ EncodingProfile)
@@ -342,7 +241,7 @@ MSVideoSize MSWinRTCapHelper::SelectBestVideoSize(MSVideoSize vs)
 
 
 MSWinRTCap::MSWinRTCap()
-	: mIsInitialized(false), mIsActivated(false), mIsStarted(false), mFps(15), mStartTime(0), mDeviceOrientation(0)
+	: mIsInitialized(false), mIsActivated(false), mIsStarted(false), mFps(15), mStartTime(0)
 {
 	if (smInstantiated) {
 		ms_error("[MSWinRTCap] A video capture filter is already instantiated. A second one can not be created.");
@@ -377,21 +276,11 @@ int MSWinRTCap::activate()
 	applyVideoSize();
 	applyFps();
 	mIsActivated = true;
-	if (mIsActivated && (mCaptureElement != nullptr)) {
-		if (mCaptureElement->Dispatcher->HasThreadAccess) {
-			mCaptureElement->Source = mHelper->CaptureDevice.Get();
-		} else {
-			mCaptureElement->Dispatcher->RunAsync(Windows::UI::Core::CoreDispatcherPriority::Normal, ref new Windows::UI::Core::DispatchedHandler([this]() {
-				mCaptureElement->Source = mHelper->CaptureDevice.Get();
-			}));
-		}
-	}
 	return 0;
 }
 
 int MSWinRTCap::deactivate()
 {
-	mHelper->StopPreview();
 	mIsActivated = false;
 	mIsInitialized = false;
 	return 0;
@@ -400,8 +289,7 @@ int MSWinRTCap::deactivate()
 void MSWinRTCap::start()
 {
 	if (!mIsStarted && mIsActivated) {
-		mIsStarted = mHelper->StartPreview(mDeviceOrientation);
-		if (mIsStarted) mIsStarted = mHelper->StartCapture(mEncodingProfile);
+		mIsStarted = mHelper->StartCapture(mEncodingProfile);
 	}
 }
 
@@ -447,7 +335,7 @@ float MSWinRTCap::getAverageFps()
 MSVideoSize MSWinRTCap::getVideoSize()
 {
 	MSVideoSize vs;
-	if ((mDeviceOrientation % 180) == 90) {
+	if ((mHelper->DeviceOrientation % 180) == 90) {
 		vs.width = mVideoSize.height;
 		vs.height = mVideoSize.width;
 	} else {
@@ -470,9 +358,9 @@ void MSWinRTCap::selectBestVideoSize(MSVideoSize vs)
 void MSWinRTCap::setDeviceOrientation(int degrees)
 {
 	if (mFront) {
-		mDeviceOrientation = degrees % 360;
+		mHelper->DeviceOrientation = degrees % 360;
 	} else {
-		mDeviceOrientation = (360 - degrees) % 360;
+		mHelper->DeviceOrientation = (360 - degrees) % 360;
 	}
 }
 

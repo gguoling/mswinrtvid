@@ -1,5 +1,5 @@
 /*
-mswinrtdis.h
+RemoteHandle.h
 
 mediastreamer2 library - modular sound and video processing and streaming
 Windows Audio Session API sound card plugin for mediastreamer2
@@ -20,35 +20,27 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 
-
 #pragma once
 
-#include <string>
-
-#include "mswinrtvid.h"
-#include "Renderer.h"
-
+#include <ppltasks.h>
 
 namespace libmswinrtvid
 {
-	class MSWinRTDis {
+	class RemoteHandle
+	{
 	public:
-		MSWinRTDis();
-		virtual ~MSWinRTDis();
-
-		int activate();
-		int deactivate();
-		bool isStarted() { return mIsStarted; }
-		void start();
-		void stop();
-		int feed(MSFilter *f);
-		MSVideoSize getVideoSize();
-		void setSwapChainPanel(Platform::String ^swapChainPanelName);
-
+		RemoteHandle();
+		~RemoteHandle();
+		RemoteHandle& AssignHandle(HANDLE localHandle, DWORD processId);
+		RemoteHandle& Close();
+		HANDLE GetLocalHandle() const;
+		HANDLE GetRemoteHandle() const;
 	private:
-		bool mIsActivated;
-		bool mIsStarted;
-		uint8_t *mBuffer;
-		MSWinRTRenderer^ mRenderer;
+		RemoteHandle(const RemoteHandle&);
+		const RemoteHandle& operator = (const RemoteHandle&) { return *this; };
+		HANDLE mLocalHandle;
+		HANDLE mRemoteHandle;
+		DWORD mProcessId;
+		HANDLE mProcessHandle;
 	};
 }
