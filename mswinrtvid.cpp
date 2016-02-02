@@ -173,7 +173,8 @@ MS_FILTER_DESC_EXPORT(ms_winrtcap_read_desc)
 static void ms_winrtcap_detect(MSWebCamManager *m);
 
 static MSFilter *ms_winrtcap_create_reader(MSWebCam *cam) {
-	MSFilter *f = ms_filter_new_from_desc(&ms_winrtcap_read_desc);
+	MSFactory *factory = ms_web_cam_get_factory(cam);
+	MSFilter *f = ms_factory_create_filter_from_desc(factory, &ms_winrtcap_read_desc);
 	MSWinRTCap *r = static_cast<MSWinRTCap *>(f->data);
 	WinRTWebcam* winrtcam = static_cast<WinRTWebcam *>(cam->data);
 	r->setDeviceId(ref new Platform::String(winrtcam->id));
@@ -291,10 +292,10 @@ MS_FILTER_DESC_EXPORT(ms_winrtdis_desc)
 
 
 
-extern "C" __declspec(dllexport) void libmswinrtvid_init(void) {
-	MSWebCamManager *manager = ms_web_cam_manager_get();
+extern "C" __declspec(dllexport) void libmswinrtvid_init(MSFactory *factory) {
+	MSWebCamManager *manager = ms_factory_get_web_cam_manager(factory);
 	ms_web_cam_manager_register_desc(manager, &ms_winrtcap_desc);
-	ms_filter_register(&ms_winrtcap_read_desc);
-	ms_filter_register(&ms_winrtdis_desc);
+	ms_factory_register_filter(factory, &ms_winrtcap_read_desc);
+	ms_factory_register_filter(factory, &ms_winrtdis_desc);
 	ms_message("libmswinrtvid plugin loaded");
 }
