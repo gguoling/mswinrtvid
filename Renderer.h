@@ -119,7 +119,7 @@ namespace libmswinrtvid
 		HANDLE mEventAvailableEvent;
 		HANDLE mCommandAvailableEvent;
 		RemoteHandle mSwapChainHandle;
-		SharedData* mSharedData;
+		MSWinRTVideo::SharedData* mSharedData;
 		bool mUseHardware;
 		Platform::String^ mUrl;
 

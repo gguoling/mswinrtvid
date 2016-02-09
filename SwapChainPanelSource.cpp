@@ -29,20 +29,21 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 using namespace Platform;
 using namespace Windows::Foundation;
 using namespace Windows::UI::Core;
+using namespace MSWinRTVideo;
 
 
-libmswinrtvid::SwapChainPanelSource::SwapChainPanelSource()
+SwapChainPanelSource::SwapChainPanelSource()
 	: mSwapChainPanel(nullptr), mMemoryMapping(INVALID_HANDLE_VALUE), mSharedData(nullptr)
 {
 
 }
 
-libmswinrtvid::SwapChainPanelSource::~SwapChainPanelSource()
+SwapChainPanelSource::~SwapChainPanelSource()
 {
 	Stop();
 }
 
-void libmswinrtvid::SwapChainPanelSource::Start(Windows::UI::Xaml::Controls::SwapChainPanel^ swapChainPanel)
+void SwapChainPanelSource::Start(Windows::UI::Xaml::Controls::SwapChainPanel^ swapChainPanel)
 {
 	Stop();
 
@@ -77,10 +78,10 @@ void libmswinrtvid::SwapChainPanelSource::Start(Windows::UI::Xaml::Controls::Swa
 		mSharedData->height = (int)swapChainPanel->ActualHeight;
 		SetEvent(mSharedData->foregroundCommandAvailableEvent);
 	}
-	mSwapChainPanel->SizeChanged += ref new Windows::UI::Xaml::SizeChangedEventHandler(this, &libmswinrtvid::SwapChainPanelSource::OnSizeChanged);
+	mSwapChainPanel->SizeChanged += ref new Windows::UI::Xaml::SizeChangedEventHandler(this, &SwapChainPanelSource::OnSizeChanged);
 }
 
-void libmswinrtvid::SwapChainPanelSource::Stop()
+void SwapChainPanelSource::Stop()
 {
 	if (mSharedData != nullptr)
 	{
@@ -133,7 +134,7 @@ void libmswinrtvid::SwapChainPanelSource::Stop()
 	}
 }
 
-IAsyncAction^ libmswinrtvid::SwapChainPanelSource::GetEvents()
+IAsyncAction^ SwapChainPanelSource::GetEvents()
 {
 	return concurrency::create_async([this]()
 	{
@@ -199,7 +200,7 @@ IAsyncAction^ libmswinrtvid::SwapChainPanelSource::GetEvents()
 	});
 }
 
-void libmswinrtvid::SwapChainPanelSource::OnSizeChanged(Platform::Object^ sender, Windows::UI::Xaml::SizeChangedEventArgs^ e)
+void SwapChainPanelSource::OnSizeChanged(Platform::Object^ sender, Windows::UI::Xaml::SizeChangedEventArgs^ e)
 {
 	if (mSharedData == nullptr) return;
 	WaitForSingleObject(mSharedData->foregroundLockMutex, INFINITE);

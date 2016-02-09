@@ -56,7 +56,7 @@ Platform::Boolean MSWinRTExtensionManager::Setup()
 	hr = ActivateInstance(HStringReference(RuntimeClass_Windows_Foundation_Collections_PropertySet).Get(), props.ReleaseAndGetAddressOf());
 	ComPtr<IPropertySet> propSet;
 	props.As(&propSet);
-	HStringReference clsid(L"libmswinrtvid.SchemeHandler");
+	HStringReference clsid(L"MSWinRTVideo.SchemeHandler");
 	HStringReference scheme(L"mswinrtvid:");
 	hr = mMediaExtensionManager->RegisterSchemeHandlerWithSettings(clsid.Get(), scheme.Get(), propSet.Get());
 	if (FAILED(hr)) {
@@ -101,7 +101,7 @@ void MSWinRTRenderer::SetSwapChainPanel(Platform::String ^swapChainPanelName)
 		DWORD error = GetLastError();
 		throw ref new Platform::COMException(HRESULT_FROM_WIN32(error));
 	}
-	mSharedData = (SharedData*)MapViewOfFileFromApp(mMemoryMapping, FILE_MAP_READ | FILE_MAP_WRITE, 0LL, sizeof(*mSharedData));
+	mSharedData = (MSWinRTVideo::SharedData*)MapViewOfFileFromApp(mMemoryMapping, FILE_MAP_READ | FILE_MAP_WRITE, 0LL, sizeof(*mSharedData));
 	if (mSharedData == nullptr) {
 		DWORD error = GetLastError();
 		Close();

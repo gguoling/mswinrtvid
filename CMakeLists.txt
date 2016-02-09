@@ -55,13 +55,9 @@ set(SOURCE_FILES
 	"RemoteHandle.h"
 	"Renderer.cpp"
 	"Renderer.h"
-	"SchemeHandler.cpp"
-	"SchemeHandler.h"
 	"ScopeLock.cpp"
 	"ScopeLock.h"
 	"SharedData.h"
-	"SwapChainPanelSource.cpp"
-	"SwapChainPanelSource.h"
 	"VideoBuffer.h"
 )
 set(LIBS ${MEDIASTREAMER2_LIBRARIES} mfplat.lib;mfuuid.lib)

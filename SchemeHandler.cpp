@@ -26,26 +26,27 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 using namespace Microsoft::WRL::Wrappers;
 using namespace Microsoft::WRL;
+using namespace MSWinRTVideo;
 
 
-libmswinrtvid::SchemeHandler::SchemeHandler()
+SchemeHandler::SchemeHandler()
 {
 }
 
 
-libmswinrtvid::SchemeHandler::~SchemeHandler()
+SchemeHandler::~SchemeHandler()
 {
 }
 
 // IMediaExtension methods
-IFACEMETHODIMP libmswinrtvid::SchemeHandler::SetProperties(ABI::Windows::Foundation::Collections::IPropertySet *pConfiguration)
+IFACEMETHODIMP SchemeHandler::SetProperties(ABI::Windows::Foundation::Collections::IPropertySet *pConfiguration)
 {
 	mExtensionManagerProperties = pConfiguration;
 	return S_OK;
 }
 
 // IMFSchemeHandler methods
-IFACEMETHODIMP libmswinrtvid::SchemeHandler::BeginCreateObject(
+IFACEMETHODIMP SchemeHandler::BeginCreateObject(
 	_In_ LPCWSTR pwszURL,
 	_In_ DWORD dwFlags,
 	_In_ IPropertyStore *pProps,
@@ -92,7 +93,7 @@ IFACEMETHODIMP libmswinrtvid::SchemeHandler::BeginCreateObject(
 	return result->GetStatus();
 }
 
-IFACEMETHODIMP libmswinrtvid::SchemeHandler::EndCreateObject(_In_ IMFAsyncResult *pResult, _Out_  MF_OBJECT_TYPE *pObjectType, _Out_  IUnknown **ppObject)
+IFACEMETHODIMP SchemeHandler::EndCreateObject(_In_ IMFAsyncResult *pResult, _Out_  MF_OBJECT_TYPE *pObjectType, _Out_  IUnknown **ppObject)
 {
 	if ((pResult == nullptr) || (pObjectType == nullptr) || (ppObject == nullptr)) {
 		return E_INVALIDARG;
@@ -114,7 +115,7 @@ IFACEMETHODIMP libmswinrtvid::SchemeHandler::EndCreateObject(_In_ IMFAsyncResult
 	return S_OK;
 }
 
-IFACEMETHODIMP libmswinrtvid::SchemeHandler::CancelObjectCreation(_In_ IUnknown *pIUnknownCancelCookie)
+IFACEMETHODIMP SchemeHandler::CancelObjectCreation(_In_ IUnknown *pIUnknownCancelCookie)
 {
 	return E_NOTIMPL;
 }

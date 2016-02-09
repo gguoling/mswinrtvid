@@ -29,12 +29,12 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include <mfmediaengine.h>
 
 
-namespace libmswinrtvid
+namespace MSWinRTVideo
 {
 	class DECLSPEC_UUID("0D41D269-A26E-4726-972B-5DFE45E2DA2E") SchemeHandler
 		: public Microsoft::WRL::RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::RuntimeClassType::WinRtClassicComMix>, ABI::Windows::Media::IMediaExtension, IMFSchemeHandler>
 	{
-		InspectableClass(L"libmswinrtvid.SchemeHandler", BaseTrust)
+		InspectableClass(L"MSWinRTVideo.SchemeHandler", BaseTrust)
 	public:
 		SchemeHandler();
 		~SchemeHandler();
