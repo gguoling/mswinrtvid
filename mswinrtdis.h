@@ -48,7 +48,6 @@ namespace libmswinrtvid
 	private:
 		bool mIsActivated;
 		bool mIsStarted;
-		uint8_t *mBuffer;
 		MSWinRTRenderer^ mRenderer;
 	};
 }

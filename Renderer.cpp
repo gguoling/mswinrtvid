@@ -90,6 +90,7 @@ MSWinRTRenderer::MSWinRTRenderer() :
 MSWinRTRenderer::~MSWinRTRenderer()
 {
 	Close();
+	mUrl = nullptr;
 }
 
 void MSWinRTRenderer::SetSwapChainPanel(Platform::String ^swapChainPanelName)
@@ -151,7 +152,7 @@ void MSWinRTRenderer::Close()
 	if (mMediaEngineNotify != nullptr)
 	{
 		mMediaEngineNotify->SetCallback(nullptr);
-		mMediaEngineNotify.Detach();
+		mMediaEngineNotify = nullptr;
 	}
 	if (mMediaEngine != nullptr)
 	{
@@ -171,6 +172,12 @@ void MSWinRTRenderer::Close()
 	{
 		mMediaStreamSource->Stop();
 		mMediaStreamSource = nullptr;
+	}
+	if (mDevice != nullptr) {
+		mDevice = nullptr;
+	}
+	if (mDxGIManager != nullptr) {
+		mDxGIManager = nullptr;
 	}
 
 	if (mSharedData != nullptr)
@@ -375,7 +382,7 @@ HRESULT MSWinRTRenderer::CreateDX11Device()
 	HRESULT hr = S_OK;
 
 	if (mUseHardware) {
-		hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, D3D11_CREATE_DEVICE_VIDEO_SUPPORT, levels, ARRAYSIZE(levels), D3D11_SDK_VERSION, &mDevice, &FeatureLevel, &mDx11DeviceContext);
+		hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, D3D11_CREATE_DEVICE_VIDEO_SUPPORT, levels, ARRAYSIZE(levels), D3D11_SDK_VERSION, &mDevice, &FeatureLevel, nullptr);
 	}
 
 	if (FAILED(hr)) {
@@ -384,7 +391,7 @@ HRESULT MSWinRTRenderer::CreateDX11Device()
 	}
 
 	if (!mUseHardware) {
-		hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, D3D11_CREATE_DEVICE_VIDEO_SUPPORT, levels, ARRAYSIZE(levels), D3D11_SDK_VERSION, &mDevice, &FeatureLevel, &mDx11DeviceContext);
+		hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, D3D11_CREATE_DEVICE_VIDEO_SUPPORT, levels, ARRAYSIZE(levels), D3D11_SDK_VERSION, &mDevice, &FeatureLevel, nullptr);
 		if (FAILED(hr)) {
 			ms_error("MSWinRTRenderer::CreateDX11Device: Failed to create WARP device %x", hr);
 			return hr;

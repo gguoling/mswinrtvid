@@ -124,7 +124,6 @@ namespace libmswinrtvid
 		Platform::String^ mUrl;
 
 		Microsoft::WRL::ComPtr<ID3D11Device> mDevice;
-		Microsoft::WRL::ComPtr<ID3D11DeviceContext> mDx11DeviceContext;
 		Microsoft::WRL::ComPtr<IMFDXGIDeviceManager> mDxGIManager;
 		Microsoft::WRL::ComPtr<IMFMediaEngine> mMediaEngine;
 		Microsoft::WRL::ComPtr<IMFMediaEngineEx> mMediaEngineEx;
