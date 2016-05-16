@@ -252,6 +252,7 @@ MSWinRTCap::MSWinRTCap()
 	mVideoSize.height = MS_VIDEO_SIZE_CIF_H;
 	mHelper = ref new MSWinRTCapHelper();
 	smInstantiated = true;
+	initialize();
 }
 
 MSWinRTCap::~MSWinRTCap()
@@ -379,8 +380,8 @@ void MSWinRTCap::applyVideoSize()
 		MSVideoSize vs = mVideoSize;
 		mEncodingProfile->Video->Width = vs.width;
 		mEncodingProfile->Video->Height = vs.height;
-		mEncodingProfile->Video->PixelAspectRatio->Numerator = vs.width;
-		mEncodingProfile->Video->PixelAspectRatio->Denominator = vs.height;
+		mEncodingProfile->Video->PixelAspectRatio->Numerator = 1;
+		mEncodingProfile->Video->PixelAspectRatio->Denominator = 1;
 	}
 }
 
