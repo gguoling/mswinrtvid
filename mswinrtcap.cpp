@@ -442,8 +442,8 @@ void MSWinRTCap::registerCameras(MSWebCamManager *manager)
 	if (bctbx_list_size(smCameras) == 0) {
 		ms_warning("[MSWinRTCap] No camera detected!");
 	}
-	for (int i = 0; i < bctbx_list_size(smCameras); i++) {
-		ms_web_cam_manager_prepend_cam(manager, (MSWebCam *)bctbx_list_nth_data(smCameras, i));
+	for (size_t i = 0; i < bctbx_list_size(smCameras); i++) {
+		ms_web_cam_manager_prepend_cam(manager, (MSWebCam *)bctbx_list_nth_data(smCameras, (int)i));
 	}
 	bctbx_list_free(smCameras);
 	smCameras = NULL;

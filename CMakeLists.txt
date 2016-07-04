@@ -24,6 +24,25 @@ cmake_minimum_required(VERSION 3.0)
 project(MSWINRTVID CXX)
 
 
+option(ENABLE_STRICT "Build with strict compile options." YES)
+
+
+macro(apply_compile_flags SOURCE_FILES)
+	if(${SOURCE_FILES})
+		set(options "")
+		foreach(a ${ARGV})
+			if(STRICT_OPTIONS_${a})
+				string(REPLACE ";" " " options_${a} "${STRICT_OPTIONS_${a}}")
+				set(options "${options} ${options_${a}}")
+			endif()
+		endforeach()
+		if(options)
+			set_source_files_properties(${${SOURCE_FILES}} PROPERTIES COMPILE_FLAGS "${options}")
+		endif()
+	endif()
+endmacro()
+
+
 if(LINPHONE_BUILDER_GROUP_EXTERNAL_SOURCE_PATH_BUILDERS)
 	include("${EP_ms2_CONFIG_DIR}/Mediastreamer2Config.cmake")
 else()
@@ -34,6 +53,11 @@ endif()
 include_directories(
 	${MEDIASTREAMER2_INCLUDE_DIRS}
 )
+
+set(STRICT_OPTIONS_CPP )
+if(ENABLE_STRICT)
+	list(APPEND STRICT_OPTIONS_CPP "/WX")
+endif()
 
 set(SOURCE_FILES
 	"IVideoDispatcher.h"
@@ -60,6 +84,7 @@ set(SOURCE_FILES
 	"SharedData.h"
 	"VideoBuffer.h"
 )
+apply_compile_flags(SOURCE_FILES "CPP")
 set(LIBS ${MEDIASTREAMER2_LIBRARIES} mfplat.lib;mfuuid.lib)
 
 add_library(mswinrtvid MODULE ${SOURCE_FILES})
