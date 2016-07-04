@@ -31,7 +31,7 @@ using namespace libmswinrtvid;
 
 
 bool MSWinRTCap::smInstantiated = false;
-MSList *MSWinRTCap::smCameras = NULL;
+bctbx_list_t *MSWinRTCap::smCameras = NULL;
 
 
 MSWinRTCapHelper::MSWinRTCapHelper() :
@@ -416,7 +416,7 @@ void MSWinRTCap::addCamera(MSWebCamManager *manager, MSWebCamDesc *desc, DeviceI
 		if (DeviceInfo->EnclosureLocation->Panel == Windows::Devices::Enumeration::Panel::Front) {
 			winrtwebcam->external = FALSE;
 			winrtwebcam->front = TRUE;
-			smCameras = ms_list_append(smCameras, cam);
+			smCameras = bctbx_list_append(smCameras, cam);
 		} else {
 			if (DeviceInfo->EnclosureLocation->Panel == Windows::Devices::Enumeration::Panel::Unknown) {
 				winrtwebcam->external = TRUE;
@@ -425,12 +425,12 @@ void MSWinRTCap::addCamera(MSWebCamManager *manager, MSWebCamDesc *desc, DeviceI
 				winrtwebcam->external = FALSE;
 				winrtwebcam->front = FALSE;
 			}
-			smCameras = ms_list_prepend(smCameras, cam);
+			smCameras = bctbx_list_prepend(smCameras, cam);
 		}
 	} else {
 		winrtwebcam->external = TRUE;
 		winrtwebcam->front = TRUE;
-		smCameras = ms_list_prepend(smCameras, cam);
+		smCameras = bctbx_list_prepend(smCameras, cam);
 	}
 
 error:
@@ -439,13 +439,13 @@ error:
 
 void MSWinRTCap::registerCameras(MSWebCamManager *manager)
 {
-	if (ms_list_size(smCameras) == 0) {
+	if (bctbx_list_size(smCameras) == 0) {
 		ms_warning("[MSWinRTCap] No camera detected!");
 	}
-	for (int i = 0; i < ms_list_size(smCameras); i++) {
-		ms_web_cam_manager_prepend_cam(manager, (MSWebCam *)ms_list_nth_data(smCameras, i));
+	for (int i = 0; i < bctbx_list_size(smCameras); i++) {
+		ms_web_cam_manager_prepend_cam(manager, (MSWebCam *)bctbx_list_nth_data(smCameras, i));
 	}
-	ms_list_free(smCameras);
+	bctbx_list_free(smCameras);
 	smCameras = NULL;
 }
 
