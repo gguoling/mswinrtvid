@@ -252,7 +252,6 @@ MSWinRTCap::MSWinRTCap()
 	mVideoSize.height = MS_VIDEO_SIZE_CIF_H;
 	mHelper = ref new MSWinRTCapHelper();
 	smInstantiated = true;
-	initialize();
 }
 
 MSWinRTCap::~MSWinRTCap()
