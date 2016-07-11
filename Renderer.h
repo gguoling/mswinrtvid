@@ -82,7 +82,6 @@ namespace libmswinrtvid
 		MSWinRTRenderer();
 		virtual ~MSWinRTRenderer();
 
-		void SetSwapChainPanel(Platform::String ^swapChainPanelName);
 		bool Start();
 		void Stop();
 		void Feed(Windows::Storage::Streams::IBuffer^ pBuffer, int width, int height);
@@ -98,8 +97,15 @@ namespace libmswinrtvid
 			int get() { return mFrameHeight; }
 		}
 
+		property Platform::String^ SwapChainPanelName
+		{
+			Platform::String^ get() { return mSwapChainPanelName; }
+			void set(Platform::String^ value) { mSwapChainPanelName = value; }
+		}
+
 	private:
 		void Close();
+		void SetSwapChainPanel();
 		HRESULT SetupDirectX();
 		HRESULT CreateDX11Device();
 		void SendSwapChainHandle(HANDLE swapChain);
@@ -122,6 +128,7 @@ namespace libmswinrtvid
 		MSWinRTVideo::SharedData* mSharedData;
 		bool mUseHardware;
 		Platform::String^ mUrl;
+		Platform::String^ mSwapChainPanelName;
 
 		Microsoft::WRL::ComPtr<ID3D11Device> mDevice;
 		Microsoft::WRL::ComPtr<IMFDXGIDeviceManager> mDxGIManager;

@@ -93,11 +93,11 @@ MSWinRTRenderer::~MSWinRTRenderer()
 	mUrl = nullptr;
 }
 
-void MSWinRTRenderer::SetSwapChainPanel(Platform::String ^swapChainPanelName)
+void MSWinRTRenderer::SetSwapChainPanel()
 {
 	Close();
 
-	mMemoryMapping = OpenFileMappingFromApp(FILE_MAP_READ | FILE_MAP_WRITE, TRUE, swapChainPanelName->Data());
+	mMemoryMapping = OpenFileMappingFromApp(FILE_MAP_READ | FILE_MAP_WRITE, TRUE, mSwapChainPanelName->Data());
 	if ((mMemoryMapping == nullptr) || (mMemoryMapping == INVALID_HANDLE_VALUE)) {
 		DWORD error = GetLastError();
 		throw ref new Platform::COMException(HRESULT_FROM_WIN32(error));
@@ -225,6 +225,7 @@ void MSWinRTRenderer::Close()
 
 bool MSWinRTRenderer::Start()
 {
+	SetSwapChainPanel();
 	HRESULT hr = MSWinRTExtensionManager::Instance->Setup() ? S_OK : E_FAIL;
 	if (FAILED(hr)) {
 		SendErrorEvent(hr);

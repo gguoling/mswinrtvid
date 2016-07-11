@@ -104,5 +104,5 @@ MSVideoSize MSWinRTDis::getVideoSize()
 
 void MSWinRTDis::setSwapChainPanel(Platform::String ^swapChainPanelName)
 {
-	mRenderer->SetSwapChainPanel(swapChainPanelName);
+	mRenderer->SwapChainPanelName = swapChainPanelName;
 }
