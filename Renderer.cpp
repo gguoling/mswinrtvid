@@ -226,6 +226,7 @@ void MSWinRTRenderer::Close()
 bool MSWinRTRenderer::Start()
 {
 	SetSwapChainPanel();
+	mFrameWidth = mFrameHeight = mSwapChainPanelWidth = mSwapChainPanelHeight = 0;
 	HRESULT hr = MSWinRTExtensionManager::Instance->Setup() ? S_OK : E_FAIL;
 	if (FAILED(hr)) {
 		SendErrorEvent(hr);
