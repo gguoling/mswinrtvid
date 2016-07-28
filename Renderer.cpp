@@ -96,6 +96,7 @@ MSWinRTRenderer::~MSWinRTRenderer()
 void MSWinRTRenderer::SetSwapChainPanel()
 {
 	Close();
+	if (mSwapChainPanelName == nullptr) return;
 
 	mMemoryMapping = OpenFileMappingFromApp(FILE_MAP_READ | FILE_MAP_WRITE, TRUE, mSwapChainPanelName->Data());
 	if ((mMemoryMapping == nullptr) || (mMemoryMapping == INVALID_HANDLE_VALUE)) {
@@ -277,7 +278,7 @@ void MSWinRTRenderer::Stop()
 
 void MSWinRTRenderer::Feed(Windows::Storage::Streams::IBuffer^ pBuffer, int width, int height)
 {
-	if (mMediaStreamSource != nullptr) {
+	if ((mMediaStreamSource != nullptr) && (mSharedData != nullptr) && (mMediaEngineEx != nullptr)) {
 		bool sizeChanged = false;
 		if ((width != mFrameWidth) || (height != mFrameHeight)) {
 			mFrameWidth = width;
