@@ -429,7 +429,7 @@ void MSWinRTRenderer::SendSwapChainHandle(HANDLE swapChain)
 void MSWinRTRenderer::SendErrorEvent(HRESULT hr)
 {
 	ScopeLock lock(mLock);
-	mSharedData->error = hr;
+	if (mSharedData) mSharedData->error = hr;
 	SetEvent(mEventAvailableEvent);
 }
 
