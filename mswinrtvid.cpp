@@ -50,13 +50,11 @@ static void ms_winrtcap_read_init(MSFilter *f) {
 static void ms_winrtcap_read_preprocess(MSFilter *f) {
 	MSWinRTCap *r = static_cast<MSWinRTCap *>(f->data);
 	r->activate();
+	r->start();
 }
 
 static void ms_winrtcap_read_process(MSFilter *f) {
 	MSWinRTCap *r = static_cast<MSWinRTCap *>(f->data);
-	if (!r->isStarted()) {
-		r->start();
-	}
 	r->feed(f);
 }
 
