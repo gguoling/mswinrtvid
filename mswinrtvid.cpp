@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "mediastreamer2/mswebcam.h"
 
 #include "mswinrtcap.h"
+#include "mswinrtbackgrounddis.h"
 #include "mswinrtdis.h"
 #ifdef MS2_WINDOWS_PHONE
 #include "IVideoRenderer.h"
@@ -244,9 +245,9 @@ static int ms_winrtdis_get_vsize(MSFilter *f, void *arg) {
 
 static int ms_winrtdis_set_native_window_id(MSFilter *f, void *arg) {
 	MSWinRTDis *w = static_cast<MSWinRTDis *>(f->data);
-	RefToPtrProxy<Platform::String^> *proxy = static_cast<RefToPtrProxy<Platform::String^>*>((void *)(*((PULONG_PTR)arg)));
-	Platform::String ^swapChainPanelName = proxy->Ref();
-	w->setSwapChainPanel(swapChainPanelName);
+	RefToPtrProxy<Platform::Object^> *proxy = static_cast<RefToPtrProxy<Platform::Object^>*>((void *)(*((PULONG_PTR)arg)));
+	Windows::UI::Xaml::Controls::MediaElement^ mediaElement = dynamic_cast<Windows::UI::Xaml::Controls::MediaElement^>(proxy->Ref());
+	w->setMediaElement(mediaElement);
 	return 0;
 }
 
@@ -291,11 +292,104 @@ MS_FILTER_DESC_EXPORT(ms_winrtdis_desc)
 
 
 
+/******************************************************************************
+* Methods to (de)initialize and run the WinRT background video display filter *
+******************************************************************************/
+
+static void ms_winrtbackgrounddis_init(MSFilter *f) {
+	MSWinRTBackgroundDis *w = new MSWinRTBackgroundDis();
+	f->data = w;
+}
+
+static void ms_winrtbackgrounddis_preprocess(MSFilter *f) {
+	MSWinRTBackgroundDis *w = static_cast<MSWinRTBackgroundDis *>(f->data);
+	w->activate();
+	w->start();
+}
+
+static void ms_winrtbackgrounddis_process(MSFilter *f) {
+	MSWinRTBackgroundDis *w = static_cast<MSWinRTBackgroundDis *>(f->data);
+	if (w->isStarted()) {
+		w->feed(f);
+	}
+}
+
+static void ms_winrtbackgrounddis_postprocess(MSFilter *f) {
+	MSWinRTBackgroundDis *w = static_cast<MSWinRTBackgroundDis *>(f->data);
+	w->stop();
+	w->deactivate();
+}
+
+static void ms_winrtbackgrounddis_uninit(MSFilter *f) {
+	MSWinRTBackgroundDis *w = static_cast<MSWinRTBackgroundDis *>(f->data);
+	delete w;
+}
+
+
+/******************************************************************************
+* Methods to configure the WinRT background video display filter              *
+******************************************************************************/
+
+static int ms_winrtbackgrounddis_get_vsize(MSFilter *f, void *arg) {
+	MSWinRTBackgroundDis *w = static_cast<MSWinRTBackgroundDis *>(f->data);
+	*((MSVideoSize *)arg) = w->getVideoSize();
+	return 0;
+}
+
+static int ms_winrtbackgrounddis_set_native_window_id(MSFilter *f, void *arg) {
+	MSWinRTBackgroundDis *w = static_cast<MSWinRTBackgroundDis *>(f->data);
+	RefToPtrProxy<Platform::Object^> *proxy = static_cast<RefToPtrProxy<Platform::Object^>*>((void *)(*((PULONG_PTR)arg)));
+	Platform::String^ swapChainPanelName = dynamic_cast<Platform::String^>(proxy->Ref());
+	w->setSwapChainPanel(swapChainPanelName);
+	return 0;
+}
+
+static MSFilterMethod ms_winrtbackgrounddis_methods[] = {
+	{ MS_FILTER_GET_VIDEO_SIZE,              ms_winrtbackgrounddis_get_vsize },
+	{ MS_VIDEO_DISPLAY_SET_NATIVE_WINDOW_ID, ms_winrtbackgrounddis_set_native_window_id },
+	{ 0,                                     NULL }
+};
+
+
+/******************************************************************************
+* Definition of the WinRT background video display filter                     *
+******************************************************************************/
+
+#define MS_WINRTBACKGROUNDDIS_ID          MS_FILTER_PLUGIN_ID
+#define MS_WINRTBACKGROUNDDIS_NAME        "MSWinRTBackgroundDis"
+#define MS_WINRTBACKGROUNDDIS_DESCRIPTION "WinRT background video display"
+#define MS_WINRTBACKGROUNDDIS_CATEGORY    MS_FILTER_OTHER
+#define MS_WINRTBACKGROUNDDIS_ENC_FMT     NULL
+#define MS_WINRTBACKGROUNDDIS_NINPUTS     2
+#define MS_WINRTBACKGROUNDDIS_NOUTPUTS    0
+#define MS_WINRTBACKGROUNDDIS_FLAGS       0
+
+MSFilterDesc ms_winrtbackgrounddis_desc = {
+	MS_WINRTBACKGROUNDDIS_ID,
+	MS_WINRTBACKGROUNDDIS_NAME,
+	MS_WINRTBACKGROUNDDIS_DESCRIPTION,
+	MS_WINRTBACKGROUNDDIS_CATEGORY,
+	MS_WINRTBACKGROUNDDIS_ENC_FMT,
+	MS_WINRTBACKGROUNDDIS_NINPUTS,
+	MS_WINRTBACKGROUNDDIS_NOUTPUTS,
+	ms_winrtbackgrounddis_init,
+	ms_winrtbackgrounddis_preprocess,
+	ms_winrtbackgrounddis_process,
+	ms_winrtbackgrounddis_postprocess,
+	ms_winrtbackgrounddis_uninit,
+	ms_winrtbackgrounddis_methods,
+	MS_WINRTBACKGROUNDDIS_FLAGS
+};
+
+MS_FILTER_DESC_EXPORT(ms_winrtbackgrounddis_desc)
+
+
 
 extern "C" __declspec(dllexport) void libmswinrtvid_init(MSFactory *factory) {
 	MSWebCamManager *manager = ms_factory_get_web_cam_manager(factory);
 	ms_web_cam_manager_register_desc(manager, &ms_winrtcap_desc);
 	ms_factory_register_filter(factory, &ms_winrtcap_read_desc);
 	ms_factory_register_filter(factory, &ms_winrtdis_desc);
+	ms_factory_register_filter(factory, &ms_winrtbackgrounddis_desc);
 	ms_message("libmswinrtvid plugin loaded");
 }

@@ -67,6 +67,8 @@ set(SOURCE_FILES
 	"MediaEngineNotify.h"
 	"MediaStreamSource.cpp"
 	"MediaStreamSource.h"
+	"mswinrtbackgrounddis.cpp"
+	"mswinrtbackgrounddis.h"
 	"mswinrtcap.cpp"
 	"mswinrtcap.h"
 	"mswinrtdis.cpp"
