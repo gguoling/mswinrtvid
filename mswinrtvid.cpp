@@ -338,9 +338,8 @@ static int ms_winrtbackgrounddis_get_vsize(MSFilter *f, void *arg) {
 
 static int ms_winrtbackgrounddis_set_native_window_id(MSFilter *f, void *arg) {
 	MSWinRTBackgroundDis *w = static_cast<MSWinRTBackgroundDis *>(f->data);
-	RefToPtrProxy<Platform::Object^> *proxy = static_cast<RefToPtrProxy<Platform::Object^>*>((void *)(*((PULONG_PTR)arg)));
-	Platform::String^ swapChainPanelName = dynamic_cast<Platform::String^>(proxy->Ref());
-	w->setSwapChainPanel(swapChainPanelName);
+	RefToPtrProxy<Platform::String^> *proxy = static_cast<RefToPtrProxy<Platform::String^>*>((void *)(*((PULONG_PTR)arg)));
+	w->setSwapChainPanel(proxy->Ref());
 	return 0;
 }
 
