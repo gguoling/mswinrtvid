@@ -116,6 +116,7 @@ namespace libmswinrtvid
 		int mSwapChainPanelWidth;
 		int mSwapChainPanelHeight;
 		MediaStreamSource^ mMediaStreamSource;
+		UINT mResetToken;
 
 		HANDLE mMemoryMapping;
 		HANDLE mForegroundProcess;

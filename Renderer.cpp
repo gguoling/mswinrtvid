@@ -280,6 +280,12 @@ void MSWinRTRenderer::Feed(Windows::Storage::Streams::IBuffer^ pBuffer, int widt
 {
 	if ((mMediaStreamSource != nullptr) && (mSharedData != nullptr) && (mMediaEngineEx != nullptr)) {
 		bool sizeChanged = false;
+		HRESULT hr = mDevice->GetDeviceRemovedReason();
+		if (FAILED(hr)) {
+			ms_error("MSWinRTRenderer::Feed: Device lost %x", hr);
+			Stop();
+			Start();
+		}
 		if ((width != mFrameWidth) || (height != mFrameHeight)) {
 			mFrameWidth = width;
 			mFrameHeight = height;
@@ -296,6 +302,7 @@ void MSWinRTRenderer::Feed(Windows::Storage::Streams::IBuffer^ pBuffer, int widt
 			MFARGB backgroundColor = { 0, 0, 0, 0 };
 			mMediaEngineEx->UpdateVideoStream(&srcSize, &dstSize, &backgroundColor);
 		}
+
 		mMediaStreamSource->Feed(pBuffer, width, height);
 	}
 }
@@ -312,13 +319,12 @@ HRESULT MSWinRTRenderer::SetupDirectX()
 	if (FAILED(hr)) {
 		return hr;
 	}
-	UINT resetToken;
-	hr = MFCreateDXGIDeviceManager(&resetToken, &mDxGIManager);
+	hr = MFCreateDXGIDeviceManager(&mResetToken, &mDxGIManager);
 	if (FAILED(hr)) {
 		ms_error("MSWinRTRenderer::SetupDirectX: MFCreateDXGIDeviceManager failed %x", hr);
 		return hr;
 	}
-	hr = mDxGIManager->ResetDevice(mDevice.Get(), resetToken);
+	hr = mDxGIManager->ResetDevice(mDevice.Get(), mResetToken);
 	if (FAILED(hr)) {
 		ms_error("MSWinRTRenderer::SetupDirectX: ResetDevice failed %x", hr);
 		return hr;
@@ -383,9 +389,10 @@ HRESULT MSWinRTRenderer::CreateDX11Device()
 	};
 	D3D_FEATURE_LEVEL FeatureLevel;
 	HRESULT hr = S_OK;
+	UINT createFlag = D3D11_CREATE_DEVICE_VIDEO_SUPPORT;
 
 	if (mUseHardware) {
-		hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, D3D11_CREATE_DEVICE_VIDEO_SUPPORT, levels, ARRAYSIZE(levels), D3D11_SDK_VERSION, &mDevice, &FeatureLevel, nullptr);
+		hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, createFlag, levels, ARRAYSIZE(levels), D3D11_SDK_VERSION, &mDevice, &FeatureLevel, nullptr);
 	}
 
 	if (FAILED(hr)) {
@@ -394,7 +401,7 @@ HRESULT MSWinRTRenderer::CreateDX11Device()
 	}
 
 	if (!mUseHardware) {
-		hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, D3D11_CREATE_DEVICE_VIDEO_SUPPORT, levels, ARRAYSIZE(levels), D3D11_SDK_VERSION, &mDevice, &FeatureLevel, nullptr);
+		hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, createFlag, levels, ARRAYSIZE(levels), D3D11_SDK_VERSION, &mDevice, &FeatureLevel, nullptr);
 		if (FAILED(hr)) {
 			ms_error("MSWinRTRenderer::CreateDX11Device: Failed to create WARP device %x", hr);
 			return hr;
@@ -439,7 +446,8 @@ void MSWinRTRenderer::OnMediaEngineEvent(uint32 meEvent, uintptr_t param1, uint3
 	HANDLE swapChainHandle;
 	switch ((DWORD)meEvent) {
 	case MF_MEDIA_ENGINE_EVENT_ERROR:
-		SendErrorEvent((HRESULT)param2);
+		ms_error("MSWinRTRenderer::OnMediaEngineEvent: Error");
+		//SendErrorEvent((HRESULT)param2);
 		break;
 	case MF_MEDIA_ENGINE_EVENT_PLAYING:
 	case MF_MEDIA_ENGINE_EVENT_FIRSTFRAMEREADY:
@@ -448,11 +456,13 @@ void MSWinRTRenderer::OnMediaEngineEvent(uint32 meEvent, uintptr_t param1, uint3
 		break;
 	case MF_MEDIA_ENGINE_EVENT_FORMATCHANGE:
 		mMediaEngineEx->GetVideoSwapchainHandle(&swapChainHandle);
+		ms_error("MSWinRTRenderer::OnMediaEngineEvent: Format change");
 		SendSwapChainHandle(swapChainHandle);
 		break;
 	case MF_MEDIA_ENGINE_EVENT_CANPLAY:
 		hr = mMediaEngine->Play();
 		if (FAILED(hr)) {
+			ms_error("MSWinRTRenderer::OnMediaEngineEvent: Error on play");
 			SendErrorEvent(hr);
 		}
 		break;

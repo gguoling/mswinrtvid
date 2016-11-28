@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <collection.h>
 #include <ppltasks.h>
 #include <Windows.ui.xaml.media.dxinterop.h>
+#include <crtdbg.h>
 
 #include "SwapChainPanelSource.h"
 
@@ -35,7 +36,6 @@ using namespace MSWinRTVideo;
 SwapChainPanelSource::SwapChainPanelSource()
 	: mSwapChainPanel(nullptr), mMemoryMapping(INVALID_HANDLE_VALUE), mSharedData(nullptr)
 {
-
 }
 
 SwapChainPanelSource::~SwapChainPanelSource()
@@ -180,6 +180,7 @@ IAsyncAction^ SwapChainPanelSource::GetEvents()
 						}
 						if (mCurrentSwapChainHandle != nullptr)
 						{
+							
 							CloseHandle(mCurrentSwapChainHandle);
 						}
 						mCurrentSwapChainHandle = foregroundSwapChainHandle;

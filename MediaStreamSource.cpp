@@ -136,7 +136,10 @@ void libmswinrtvid::MediaStreamSource::AnswerSampleRequest(Windows::Media::Core:
 	}
 	spSample->AddBuffer(mediaBuffer.Get());
 	RenderFrame(mediaBuffer.Get());
-	spRequest->SetSample(spSample.Get());
+	hr = spRequest->SetSample(spSample.Get());
+	if (FAILED(hr)) {
+		ms_error("MediaStreamSource::AnswerSampleRequest: SetSample failed %x", hr);
+	}
 	mSample = nullptr;
 }
 
