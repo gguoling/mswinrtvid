@@ -446,7 +446,7 @@ void MSWinRTRenderer::OnMediaEngineEvent(uint32 meEvent, uintptr_t param1, uint3
 	HANDLE swapChainHandle;
 	switch ((DWORD)meEvent) {
 	case MF_MEDIA_ENGINE_EVENT_ERROR:
-		ms_error("MSWinRTRenderer::OnMediaEngineEvent: Error");
+		ms_message("MSWinRTRenderer::OnMediaEngineEvent: Error");
 		//SendErrorEvent((HRESULT)param2);
 		break;
 	case MF_MEDIA_ENGINE_EVENT_PLAYING:
@@ -456,7 +456,7 @@ void MSWinRTRenderer::OnMediaEngineEvent(uint32 meEvent, uintptr_t param1, uint3
 		break;
 	case MF_MEDIA_ENGINE_EVENT_FORMATCHANGE:
 		mMediaEngineEx->GetVideoSwapchainHandle(&swapChainHandle);
-		ms_error("MSWinRTRenderer::OnMediaEngineEvent: Format change");
+		ms_message("MSWinRTRenderer::OnMediaEngineEvent: Format change");
 		SendSwapChainHandle(swapChainHandle);
 		break;
 	case MF_MEDIA_ENGINE_EVENT_CANPLAY:
