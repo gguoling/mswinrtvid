@@ -44,6 +44,16 @@ endmacro()
 
 
 if(LINPHONE_BUILDER_GROUP_EXTERNAL_SOURCE_PATH_BUILDERS)
+	include("${EP_bctoolbox_CONFIG_DIR}/BcToolboxConfig.cmake")
+else()
+	find_package(BcToolbox REQUIRED)
+endif()
+if(LINPHONE_BUILDER_GROUP_EXTERNAL_SOURCE_PATH_BUILDERS)
+	include("${EP_ortp_CONFIG_DIR}/ORTPConfig.cmake")
+else()
+	find_package(ORTP REQUIRED)
+endif()
+if(LINPHONE_BUILDER_GROUP_EXTERNAL_SOURCE_PATH_BUILDERS)
 	include("${EP_ms2_CONFIG_DIR}/Mediastreamer2Config.cmake")
 else()
 	find_package(Mediastreamer2 REQUIRED)
@@ -52,6 +62,8 @@ endif()
 
 include_directories(
 	${MEDIASTREAMER2_INCLUDE_DIRS}
+	${ORTP_INCLUDE_DIRS}
+	${BCTOOLBOX_INCLUDE_DIRS}
 )
 
 set(STRICT_OPTIONS_CPP )
@@ -87,7 +99,7 @@ set(SOURCE_FILES
 	"VideoBuffer.h"
 )
 apply_compile_flags(SOURCE_FILES "CPP")
-set(LIBS ${MEDIASTREAMER2_LIBRARIES} mfplat.lib;mfuuid.lib)
+set(LIBS ${MEDIASTREAMER2_LIBRARIES} ${ORTP_LIBRARIES} ${BCTOOLBOX_LIBRARIES} mfplat.lib;mfuuid.lib)
 
 add_library(mswinrtvid MODULE ${SOURCE_FILES})
 set_target_properties(mswinrtvid PROPERTIES VERSION 0)
