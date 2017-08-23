@@ -243,8 +243,9 @@ static int ms_winrtdis_get_vsize(MSFilter *f, void *arg) {
 
 static int ms_winrtdis_set_native_window_id(MSFilter *f, void *arg) {
 	MSWinRTDis *w = static_cast<MSWinRTDis *>(f->data);
-	RefToPtrProxy<Platform::Object^> *proxy = static_cast<RefToPtrProxy<Platform::Object^>*>((void *)(*((PULONG_PTR)arg)));
-	Windows::UI::Xaml::Controls::MediaElement^ mediaElement = dynamic_cast<Windows::UI::Xaml::Controls::MediaElement^>(proxy->Ref());
+	Platform::String^ swapPanelName = ref new Platform::String((const wchar_t *)(*(PULONG_PTR)arg));
+	ms_message("SwapPanelBackground Name: %s", (const wchar_t *)((PULONG_PTR)arg));
+	Windows::UI::Xaml::Controls::MediaElement^ mediaElement = dynamic_cast<Windows::UI::Xaml::Controls::MediaElement^>(swapPanelName);
 	w->setMediaElement(mediaElement);
 	return 0;
 }
@@ -336,8 +337,9 @@ static int ms_winrtbackgrounddis_get_vsize(MSFilter *f, void *arg) {
 
 static int ms_winrtbackgrounddis_set_native_window_id(MSFilter *f, void *arg) {
 	MSWinRTBackgroundDis *w = static_cast<MSWinRTBackgroundDis *>(f->data);
-	RefToPtrProxy<Platform::String^> *proxy = static_cast<RefToPtrProxy<Platform::String^>*>((void *)(*((PULONG_PTR)arg)));
-	w->setSwapChainPanel(proxy->Ref());
+	Platform::String^ swapPanelName = ref new Platform::String((const wchar_t *)(*(PULONG_PTR)arg));
+	ms_message("SwapPanelBackground Name: %s", (const wchar_t *)((PULONG_PTR)arg));
+	w->setSwapChainPanel(swapPanelName);
 	return 0;
 }
 
