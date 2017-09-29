@@ -272,6 +272,7 @@ int MSWinRTCap::activate()
 	if (!mIsInitialized) initialize();
 
 	ms_average_fps_init(&mAvgFps, "[MSWinRTCap] fps=%f");
+	ms_video_init_framerate_controller(&mFpsControl, mFps);
 	configure();
 	applyVideoSize();
 	applyFps();
@@ -309,12 +310,14 @@ void MSWinRTCap::stop()
 
 int MSWinRTCap::feed(MSFilter *f)
 {
-	mblk_t *im;
-
-	// Send queued samples
-	while ((im = mHelper->GetSample()) != NULL) {
-		ms_queue_put(f->outputs[0], im);
-		ms_average_fps_update(&mAvgFps, (uint32_t)f->ticker->time);
+	if (ms_video_capture_new_frame(&mFpsControl, f->ticker->time)) {
+		mblk_t *im;
+		
+		// Send queued samples
+		while ((im = mHelper->GetSample()) != NULL) {
+			ms_queue_put(f->outputs[0], im);
+			ms_average_fps_update(&mAvgFps, (uint32_t)f->ticker->time);
+		}
 	}
 
 	return 0;
@@ -324,6 +327,8 @@ int MSWinRTCap::feed(MSFilter *f)
 void MSWinRTCap::setFps(float fps)
 {
 	mFps = fps;
+	ms_average_fps_init(&mAvgFps, "[MSWinRTCap] fps=%f");
+	ms_video_init_framerate_controller(&mFpsControl, fps);
 	applyFps();
 }
 

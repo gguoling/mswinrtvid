@@ -132,5 +132,6 @@ namespace libmswinrtvid
 		bool mExternal;
 		MSWinRTCapHelper^ mHelper;
 		MediaEncodingProfile^ mEncodingProfile;
+		MSFrameRateController mFpsControl;
 	};
 }
