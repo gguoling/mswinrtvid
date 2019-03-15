@@ -21,6 +21,12 @@
 ############################################################################
 
 cmake_minimum_required(VERSION 3.0)
+
+set(CMAKE_CROSSCOMPILING "YES")
+set(CMAKE_SYSTEM_NAME "WindowsStore")
+set(CMAKE_SYSTEM_VERSION "10.0")
+set(CMAKE_VS_INCLUDE_INSTALL_TO_DEFAULT_BUILD "TRUE")
+
 project(MSWINRTVID CXX)
 
 
