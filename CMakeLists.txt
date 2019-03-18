@@ -20,7 +20,7 @@
 #
 ############################################################################
 
-cmake_minimum_required(VERSION 3.0)
+cmake_minimum_required(VERSION 3.12.4)
 
 set(CMAKE_CROSSCOMPILING "YES")
 set(CMAKE_SYSTEM_NAME "WindowsStore")
