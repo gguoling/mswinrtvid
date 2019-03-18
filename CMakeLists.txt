@@ -29,9 +29,10 @@ set(CMAKE_VS_INCLUDE_INSTALL_TO_DEFAULT_BUILD "TRUE")
 
 project(MSWINRTVID CXX)
 
-
 option(ENABLE_STRICT "Build with strict compile options." YES)
 
+# We need to redefine _WIN32_WINNT to use Windows 10 Function
+add_compile_definitions(_WIN32_WINNT=0x0A00 _ALLOW_KEYWORD_MACROS)
 
 macro(apply_compile_flags SOURCE_FILES)
 	if(${SOURCE_FILES})
@@ -116,8 +117,8 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
 	)
 endif()
 set_target_properties(mswinrtvid PROPERTIES PREFIX "lib")
-set_target_properties(mswinrtvid PROPERTIES VS_WINRT_COMPONENT TRUE)
 target_link_libraries(mswinrtvid ${LIBS})
+set_target_properties(mswinrtvid PROPERTIES VS_WINRT_COMPONENT TRUE)
 
 install(TARGETS mswinrtvid
 	RUNTIME DESTINATION lib/mediastreamer/plugins
