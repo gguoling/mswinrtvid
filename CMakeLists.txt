@@ -20,12 +20,19 @@
 #
 ############################################################################
 
-cmake_minimum_required(VERSION 3.0)
-project(MSWINRTVID CXX)
+cmake_minimum_required(VERSION 3.12.4)
 
+set(CMAKE_CROSSCOMPILING "YES")
+set(CMAKE_SYSTEM_NAME "WindowsStore")
+set(CMAKE_SYSTEM_VERSION "10.0")
+set(CMAKE_VS_INCLUDE_INSTALL_TO_DEFAULT_BUILD "TRUE")
+
+project(MSWINRTVID CXX)
 
 option(ENABLE_STRICT "Build with strict compile options." YES)
 
+# We need to redefine _WIN32_WINNT to use Windows 10 Function
+add_compile_definitions(_WIN32_WINNT=0x0A00 _ALLOW_KEYWORD_MACROS)
 
 macro(apply_compile_flags SOURCE_FILES)
 	if(${SOURCE_FILES})
@@ -42,23 +49,9 @@ macro(apply_compile_flags SOURCE_FILES)
 	endif()
 endmacro()
 
-
-if(LINPHONE_BUILDER_GROUP_EXTERNAL_SOURCE_PATH_BUILDERS)
-	include("${EP_bctoolbox_CONFIG_DIR}/BcToolboxConfig.cmake")
-else()
-	find_package(BcToolbox REQUIRED)
-endif()
-if(LINPHONE_BUILDER_GROUP_EXTERNAL_SOURCE_PATH_BUILDERS)
-	include("${EP_ortp_CONFIG_DIR}/ORTPConfig.cmake")
-else()
-	find_package(ORTP REQUIRED)
-endif()
-if(LINPHONE_BUILDER_GROUP_EXTERNAL_SOURCE_PATH_BUILDERS)
-	include("${EP_ms2_CONFIG_DIR}/Mediastreamer2Config.cmake")
-else()
-	find_package(Mediastreamer2 REQUIRED)
-endif()
-
+find_package(bctoolbox CONFIG REQUIRED)
+find_package(ortp CONFIG REQUIRED)
+find_package(Mediastreamer2 CONFIG REQUIRED)
 
 include_directories(
 	${MEDIASTREAMER2_INCLUDE_DIRS}
@@ -110,8 +103,8 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
 	)
 endif()
 set_target_properties(mswinrtvid PROPERTIES PREFIX "lib")
-set_target_properties(mswinrtvid PROPERTIES VS_WINRT_COMPONENT TRUE)
 target_link_libraries(mswinrtvid ${LIBS})
+set_target_properties(mswinrtvid PROPERTIES VS_WINRT_COMPONENT TRUE)
 
 install(TARGETS mswinrtvid
 	RUNTIME DESTINATION lib/mediastreamer/plugins

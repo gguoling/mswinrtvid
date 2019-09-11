@@ -31,8 +31,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <vector>
 
-
-#ifdef MS2_WINDOWS_UNIVERSAL
 #include <agile.h>
 
 typedef struct WinRTWebcam {
@@ -41,7 +39,6 @@ typedef struct WinRTWebcam {
 	bool_t external;
 	bool_t front;
 } WinRTWebcam;
-#endif
 
 template <class T> class RefToPtrProxy
 {
