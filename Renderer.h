@@ -86,6 +86,7 @@ namespace libmswinrtvid
 		void Stop();
 		void Feed(Windows::Storage::Streams::IBuffer^ pBuffer, int width, int height);
 		virtual void OnMediaEngineEvent(uint32 meEvent, uintptr_t param1, uint32 param2);
+		static bool D3D11Supported();
 
 		property int FrameWidth
 		{
