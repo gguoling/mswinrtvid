@@ -31,6 +31,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "IVideoRenderer.h"
 #endif
 
+#include "Renderer.h"
 
 using namespace libmswinrtvid;
 #ifdef MS2_WINDOWS_PHONE
@@ -383,12 +384,13 @@ MSFilterDesc ms_winrtbackgrounddis_desc = {
 MS_FILTER_DESC_EXPORT(ms_winrtbackgrounddis_desc)
 
 
-
 extern "C" __declspec(dllexport) void libmswinrtvid_init(MSFactory *factory) {
 	MSWebCamManager *manager = ms_factory_get_web_cam_manager(factory);
 	ms_web_cam_manager_register_desc(manager, &ms_winrtcap_desc);
 	ms_factory_register_filter(factory, &ms_winrtcap_read_desc);
 	ms_factory_register_filter(factory, &ms_winrtdis_desc);
-	ms_factory_register_filter(factory, &ms_winrtbackgrounddis_desc);
+	if (MSWinRTRenderer::D3D11Supported()) {
+		ms_factory_register_filter(factory, &ms_winrtbackgrounddis_desc);
+	}
 	ms_message("libmswinrtvid plugin loaded");
 }

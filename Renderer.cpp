@@ -376,6 +376,34 @@ HRESULT MSWinRTRenderer::SetupDirectX()
 	return S_OK;
 }
 
+//Returns true if this platform supports D3D11 (Libraries + hardware support)
+bool MSWinRTRenderer::D3D11Supported()
+{
+	static const D3D_FEATURE_LEVEL levels[] = {
+						   D3D_FEATURE_LEVEL_11_1,
+						   D3D_FEATURE_LEVEL_11_0,
+						   D3D_FEATURE_LEVEL_10_1,
+						   D3D_FEATURE_LEVEL_10_0,
+						   D3D_FEATURE_LEVEL_9_3,
+						   D3D_FEATURE_LEVEL_9_2,
+						   D3D_FEATURE_LEVEL_9_1
+	};
+	D3D_FEATURE_LEVEL FeatureLevel;
+	HRESULT hr;
+	UINT createFlag = D3D11_CREATE_DEVICE_VIDEO_SUPPORT;
+	Microsoft::WRL::ComPtr<ID3D11Device> device;
+
+	hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, createFlag, levels, ARRAYSIZE(levels), D3D11_SDK_VERSION, &device, &FeatureLevel, nullptr);
+
+	if (FAILED(hr)) {
+		return false;
+	}
+	if (FeatureLevel != D3D_FEATURE_LEVEL_11_1 && FeatureLevel != D3D_FEATURE_LEVEL_11_0) {
+		return false;
+	}
+	return true;
+}
+
 HRESULT MSWinRTRenderer::CreateDX11Device()
 {
 	static const D3D_FEATURE_LEVEL levels[] = {
