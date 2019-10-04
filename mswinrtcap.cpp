@@ -400,17 +400,26 @@ void MSWinRTCap::configure()
 
 void MSWinRTCap::addCamera(MSWebCamManager *manager, MSWebCamDesc *desc, DeviceInformation^ DeviceInfo)
 {
+	char *idStr = NULL;
+	char *nameStr = NULL;
 	size_t returnlen;
 	size_t inputlen = wcslen(DeviceInfo->Name->Data()) + 1;
-	char *name = (char *)ms_malloc(inputlen);
-	if (wcstombs_s(&returnlen, name, inputlen, DeviceInfo->Name->Data(), inputlen) != 0) {
+	nameStr = (char *)ms_malloc(inputlen);
+	if (!nameStr || wcstombs_s(&returnlen, nameStr, inputlen, DeviceInfo->Name->Data(), inputlen) != 0) {
 		ms_error("MSWinRTCap: Cannot convert webcam name to multi-byte string.");
 		goto error;
 	}
+	const wchar_t *id = DeviceInfo->Id->Data();
+	inputlen = wcslen(id) + 1;
+	idStr = (char *)ms_malloc(inputlen);
+	if (!idStr || wcstombs_s(&returnlen, idStr, inputlen, DeviceInfo->Id->Data(), inputlen) != 0) {
+		ms_error("MSWinRTCap: Cannot convert webcam id to multi-byte string.");
+		goto error;
+	}
+	char *name = bctbx_strdup_printf("%s--%s", nameStr, idStr);
 
 	MSWebCam *cam = ms_web_cam_new(desc);
-	cam->name = ms_strdup(name);
-	const wchar_t *id = DeviceInfo->Id->Data();
+	cam->name = name;
 	WinRTWebcam *winrtwebcam = new WinRTWebcam();
 	winrtwebcam->id_vector = new std::vector<wchar_t>(wcslen(id) + 1);
 	wcscpy_s(&winrtwebcam->id_vector->front(), winrtwebcam->id_vector->size(), id);
@@ -438,7 +447,12 @@ void MSWinRTCap::addCamera(MSWebCamManager *manager, MSWebCamDesc *desc, DeviceI
 	}
 
 error:
-	ms_free(name);
+	if (nameStr) {
+		ms_free(nameStr);
+	}
+	if (idStr) {
+		ms_free(idStr);
+	}
 }
 
 void MSWinRTCap::registerCameras(MSWebCamManager *manager)

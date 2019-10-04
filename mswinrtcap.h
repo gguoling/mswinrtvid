@@ -50,7 +50,7 @@ namespace libmswinrtvid
 		void MSWinRTCapHelper::OnSampleAvailable(BYTE *buf, DWORD bufLen, LONGLONG presentationTime);
 		MSVideoSize SelectBestVideoSize(MSVideoSize vs);
 		mblk_t * GetSample();
-		
+
 		property Platform::Agile<MediaCapture^> CaptureDevice
 		{
 			Platform::Agile<MediaCapture^> get() { return mCapture; }
